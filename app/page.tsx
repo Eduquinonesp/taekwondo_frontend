@@ -1,103 +1,194 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { motion } from "framer-motion";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+// Inicializa Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export default function HomePage() {
+  const [counts, setCounts] = useState({
+    alumnos: 0,
+    instructores: 0,
+    sedes: 0,
+  });
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Colores del gráfico
+  const COLORS = ["#00C49F", "#FFBB28", "#0088FE", "#FF8042", "#AF19FF"];
+
+  // Obtener conteos desde Supabase
+  const fetchCounts = async () => {
+    try {
+      const [{ count: alumnosCount }, { count: instructoresCount }, { count: sedesCount }] =
+        await Promise.all([
+          supabase.from("alumnos").select("*", { count: "exact", head: true }),
+          supabase.from("instructores").select("*", { count: "exact", head: true }),
+          supabase.from("sedes").select("*", { count: "exact", head: true }),
+        ]);
+
+      setCounts({
+        alumnos: alumnosCount || 0,
+        instructores: instructoresCount || 0,
+        sedes: sedesCount || 0,
+      });
+    } catch (error) {
+      console.error("Error al obtener conteos:", error);
+    }
+  };
+
+  // Obtener alumnos por sede
+  const fetchChartData = async () => {
+    try {
+      const { data: alumnos, error } = await supabase
+        .from("alumnos")
+        .select("sede_id, sedes(nombre)");
+
+      if (error) throw error;
+
+      const conteo = alumnos.reduce((acc: any, alumno: any) => {
+        const sede = alumno.sedes?.nombre || "Sin Sede";
+        acc[sede] = (acc[sede] || 0) + 1;
+        return acc;
+      }, {});
+
+      const datos = Object.entries(conteo).map(([name, value]) => ({
+        name,
+        value,
+      }));
+
+      setChartData(datos);
+    } catch (error) {
+      console.error("Error al obtener datos del gráfico:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCounts();
+    fetchChartData();
+  }, []);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-blue-950 to-gray-900 text-white p-10">
+      {/* Título principal con animación */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="text-center max-w-5xl w-full"
+      >
+        <h1 className="text-4xl md:text-5xl font-extrabold mb-6 text-white drop-shadow-md">
+          Bienvenido al Sistema Gestión Taekwon-Do 🥋
+        </h1>
+        <p className="text-lg md:text-xl text-gray-200 leading-relaxed mb-10">
+          Administra alumnos, instructores y sedes desde un solo lugar.
+        </p>
+      </motion.div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      {/* Tarjetas con animación */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.9 }}
+        className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-5xl w-full"
+      >
+        {/* Tarjeta Alumnos */}
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          className="bg-gray-800 rounded-xl p-6 text-center shadow-lg border border-gray-700 hover:bg-gray-700 transition"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+          <h2 className="text-2xl font-semibold mb-2 text-yellow-400">👦 Alumnos</h2>
+          <p className="text-4xl font-bold text-white">
+            {loading ? "…" : counts.alumnos}
+          </p>
+          <p className="text-gray-400 mt-2">Registrados</p>
+        </motion.div>
+
+        {/* Tarjeta Instructores */}
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          className="bg-gray-800 rounded-xl p-6 text-center shadow-lg border border-gray-700 hover:bg-gray-700 transition"
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+          <h2 className="text-2xl font-semibold mb-2 text-green-400">👨‍🏫 Instructores</h2>
+          <p className="text-4xl font-bold text-white">
+            {loading ? "…" : counts.instructores}
+          </p>
+          <p className="text-gray-400 mt-2">Activos</p>
+        </motion.div>
+
+        {/* Tarjeta Sedes */}
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          className="bg-gray-800 rounded-xl p-6 text-center shadow-lg border border-gray-700 hover:bg-gray-700 transition"
         >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <h2 className="text-2xl font-semibold mb-2 text-purple-400">🏫 Sedes</h2>
+          <p className="text-4xl font-bold text-white">
+            {loading ? "…" : counts.sedes}
+          </p>
+          <p className="text-gray-400 mt-2">Registradas</p>
+        </motion.div>
+      </motion.div>
+
+      {/* Gráfico circular animado */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 1 }}
+        className="bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700 mt-10 max-w-5xl w-full"
+      >
+        <h2 className="text-2xl font-semibold mb-6 text-blue-300 text-center">
+          📊 Distribución de Alumnos por Sede
+        </h2>
+        {chartData.length === 0 ? (
+          <p className="text-gray-400 text-center">
+            No hay datos suficientes para mostrar.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={350}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                outerRadius={120}
+                fill="#8884d8"
+                dataKey="value"
+                label={({ name, percent }) =>
+                  `${name} ${(percent * 100).toFixed(0)}%`
+                }
+              >
+                {chartData.map((_, index) => (
+                  <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  border: "none",
+                  borderRadius: "8px",
+                }}
+              />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
+      </motion.div>
     </div>
   );
 }
