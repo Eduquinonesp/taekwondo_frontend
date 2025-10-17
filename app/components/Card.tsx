@@ -1,18 +1,29 @@
-import React from "react";
+import * as React from "react";
 
-interface CardProps {
-  title: string;
-  icon?: string;
-  children: React.ReactNode;
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+
+export function Card({ className = "", ...props }: CardProps) {
+  return (
+    <div
+      className={`rounded-2xl border border-gray-700 bg-gray-800 text-white shadow-lg p-4 ${className}`}
+      {...props}
+    />
+  );
 }
 
-export default function Card({ title, icon, children }: CardProps) {
+export function CardHeader({ className = "", ...props }: CardProps) {
+  return <div className={`mb-2 ${className}`} {...props} />;
+}
+
+export function CardTitle({ className = "", ...props }: CardProps) {
   return (
-    <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700 rounded-2xl p-8 shadow-2xl w-full max-w-2xl text-white">
-      <h2 className="text-2xl font-semibold mb-6 flex items-center justify-center gap-2 text-center">
-        {icon && <span>{icon}</span>} {title}
-      </h2>
-      {children}
-    </div>
+    <h2
+      className={`text-lg font-semibold text-white tracking-wide ${className}`}
+      {...props}
+    />
   );
+}
+
+export function CardContent({ className = "", ...props }: CardProps) {
+  return <div className={`mt-2 ${className}`} {...props} />;
 }
