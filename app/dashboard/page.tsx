@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import {
   PieChart,
   Pie,
@@ -15,7 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 // 🎨 Colores de los gráficos
 const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f50", "#00C49F"];
 
-// 🌎 Conexión a Supabase (usamos variables de entorno)
+// 🌎 Conexión a Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -44,7 +44,6 @@ export default function DashboardPage() {
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [chartData, setChartData] = useState<{ name: string; value: number }[]>([]);
 
-  // 🧠 Cargar datos desde Supabase
   useEffect(() => {
     async function fetchData() {
       const { data: alumnosData } = await supabase.from("alumnos").select("*");
