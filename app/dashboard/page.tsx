@@ -120,7 +120,7 @@ export default function DashboardPage() {
                 <Pie
                   data={chartData}
                   dataKey="value"
-                  label={({ name, percent }: { name: string; percent: number }) =>
+                  label={({ name, percent }: any) =>
                     `${name} ${(percent * 100).toFixed(0)}%`
                   }
                 >
