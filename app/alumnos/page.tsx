@@ -1,144 +1,122 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import React, { useState, useEffect } from "react";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 
-export default function AlumnosPage() {
-  const [alumnos, setAlumnos] = useState<any[]>([]);
-  const [nombre, setNombre] = useState("");
-  const [apellido, setApellido] = useState("");
-  const [rut, setRut] = useState("");
-  const [fechaNacimiento, setFechaNacimiento] = useState("");
-  const [instructorId, setInstructorId] = useState("");
-  const [sedeId, setSedeId] = useState("");
-  const [instructores, setInstructores] = useState<any[]>([]);
-  const [sedes, setSedes] = useState<any[]>([]);
+export default function DashboardPage() {
+  const [chartData, setChartData] = useState<
+    { name: string; value: number }[]
+  >([]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: alumnosData } = await supabase.from("alumnos").select("*");
-      setAlumnos(alumnosData || []);
-
-      const { data: instructoresData } = await supabase.from("instructores").select("*");
-      setInstructores(instructoresData || []);
-
-      const { data: sedesData } = await supabase.from("sedes").select("*");
-      setSedes(sedesData || []);
-    };
-    fetchData();
+    // Simulación de datos de ejemplo
+    setChartData([
+      { name: "Dojang Ñuñoa", value: 45 },
+      { name: "Dojang La Reina", value: 30 },
+      { name: "Dojang Vitacura", value: 15 },
+      { name: "Dojang Peñalolén", value: 10 },
+    ]);
   }, []);
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
-    const { error } = await supabase.from("alumnos").insert([
-      {
-        nombre,
-        apellido,
-        rut,
-        fecha_nacimiento: fechaNacimiento,
-        instructor_id: instructorId,
-        sede_id: sedeId,
-      },
-    ]);
-
-    if (error) alert(error.message);
-    else {
-      alert("Alumno agregado correctamente 🎉");
-      setNombre("");
-      setApellido("");
-      setRut("");
-      setFechaNacimiento("");
-      setInstructorId("");
-      setSedeId("");
-    }
-  };
-
   return (
-    <div className="w-full bg-gray-900/40 rounded-2xl p-10 shadow-xl text-white">
-      <h1 className="text-3xl font-bold mb-8 flex items-center">
-        🥋 Registro de Alumnos
+    <main className="min-h-screen bg-neutral-950 text-white p-6 flex flex-col gap-8 items-center">
+      <h1 className="text-4xl font-bold mb-2 text-center text-blue-400">
+        Dashboard Taekwon-Do Chile 🇨🇱
       </h1>
+      <p className="text-neutral-400 text-center max-w-2xl mb-6">
+        Visualiza el rendimiento y distribución de alumnos por sede.
+      </p>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        <input
-          type="text"
-          placeholder="Nombre"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="Apellido"
-          value={apellido}
-          onChange={(e) => setApellido(e.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="RUT"
-          value={rut}
-          onChange={(e) => setRut(e.target.value)}
-        />
-        <input
-          type="date"
-          value={fechaNacimiento}
-          onChange={(e) => setFechaNacimiento(e.target.value)}
-        />
-        <select value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-          <option value="">Seleccionar Instructor</option>
-          {instructores.map((inst) => (
-            <option key={inst.id} value={inst.id}>
-              {inst.nombre} {inst.apellido}
-            </option>
-          ))}
-        </select>
-        <select value={sedeId} onChange={(e) => setSedeId(e.target.value)}>
-          <option value="">Seleccionar Sede</option>
-          {sedes.map((sede) => (
-            <option key={sede.id} value={sede.id}>
-              {sede.nombre}
-            </option>
-          ))}
-        </select>
-        <div className="md:col-span-2">
-          <button
-            type="submit"
-            className="bg-blue-600 hover:bg-blue-700 transition w-full py-3 rounded-lg font-semibold text-white"
-          >
-            Guardar Alumno
-          </button>
+      {/* Tarjetas de resumen */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-6xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Alumnos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">100</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Instructores</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">4</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Promedio Edad</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">15 años</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Exámenes Pendientes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">8</p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Gráfico circular */}
+      <section className="bg-neutral-900 p-6 rounded-2xl shadow-lg w-full max-w-3xl">
+        <h2 className="text-2xl font-semibold mb-4 text-center text-blue-300">
+          Distribución de alumnos por sede
+        </h2>
+
+        <div className="flex justify-center">
+          <ResponsiveContainer width="100%" height={350}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={120}
+                fill="#8884d8"
+                label={({ name, percent }: any) =>
+                  `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                }
+              >
+                {chartData.map((_, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={[
+                      "#0088FE",
+                      "#00C49F",
+                      "#FFBB28",
+                      "#FF8042",
+                    ][index % 4]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value: any) => `${value}`}
+                contentStyle={{
+                  backgroundColor: "#222",
+                  borderRadius: "8px",
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
-      </form>
-
-      <h2 className="text-2xl font-bold mb-4 flex items-center">
-        📋 Lista de Alumnos
-      </h2>
-
-      {alumnos.length === 0 ? (
-        <p className="text-gray-400 text-center">No hay alumnos registrados.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border border-gray-700 text-left rounded-lg overflow-hidden">
-            <thead className="bg-gray-700 text-gray-300">
-              <tr>
-                <th className="p-3">Nombre</th>
-                <th className="p-3">Apellido</th>
-                <th className="p-3">RUT</th>
-                <th className="p-3">Fecha Nac.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alumnos.map((al) => (
-                <tr key={al.id} className="border-t border-gray-800 hover:bg-gray-800/70">
-                  <td className="p-3">{al.nombre}</td>
-                  <td className="p-3">{al.apellido}</td>
-                  <td className="p-3">{al.rut}</td>
-                  <td className="p-3">{al.fecha_nacimiento}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+      </section>
+    </main>
   );
 }
