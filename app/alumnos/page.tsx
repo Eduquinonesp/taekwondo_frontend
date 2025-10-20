@@ -7,16 +7,23 @@ import {
   Cell,
   Tooltip,
   ResponsiveContainer,
+  PieLabelRenderProps,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+
+// ✅ Función tipada para el label del gráfico
+const renderLabel = (props: PieLabelRenderProps): string => {
+  const { name, percent } = props as { name?: string; percent?: number };
+  const safePercent = Number(percent ?? 0);
+  return `${name ?? ""} ${(safePercent * 100).toFixed(0)}%`;
+};
 
 export default function DashboardPage() {
-  const [chartData, setChartData] = useState<
-    { name: string; value: number }[]
-  >([]);
+  const [chartData, setChartData] = useState<{ name: string; value: number }[]>(
+    []
+  );
 
   useEffect(() => {
-    // Simulación de datos de ejemplo
     setChartData([
       { name: "Dojang Ñuñoa", value: 45 },
       { name: "Dojang La Reina", value: 30 },
@@ -34,7 +41,7 @@ export default function DashboardPage() {
         Visualiza el rendimiento y distribución de alumnos por sede.
       </p>
 
-      {/* Tarjetas de resumen */}
+      {/* Tarjetas de estadísticas */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-6xl">
         <Card>
           <CardHeader>
@@ -73,7 +80,7 @@ export default function DashboardPage() {
         </Card>
       </section>
 
-      {/* Gráfico circular */}
+      {/* Gráfico */}
       <section className="bg-neutral-900 p-6 rounded-2xl shadow-lg w-full max-w-3xl">
         <h2 className="text-2xl font-semibold mb-4 text-center text-blue-300">
           Distribución de alumnos por sede
@@ -90,19 +97,12 @@ export default function DashboardPage() {
                 cy="50%"
                 outerRadius={120}
                 fill="#8884d8"
-                label={({ name, percent }: any) =>
-                  `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                }
+                label={renderLabel} // ✅ uso de función externa tipada
               >
                 {chartData.map((_, index) => (
                   <Cell
                     key={`cell-${index}`}
-                    fill={[
-                      "#0088FE",
-                      "#00C49F",
-                      "#FFBB28",
-                      "#FF8042",
-                    ][index % 4]}
+                    fill={["#0088FE", "#00C49F", "#FFBB28", "#FF8042"][index % 4]}
                   />
                 ))}
               </Pie>
