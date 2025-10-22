@@ -1,131 +1,134 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import React, { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
-} from "recharts";
-import { createClient } from "@supabase/supabase-js";
-
-// 🎨 Colores de los gráficos
-const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f50", "#00C49F"];
-
-// 🌎 Conexión a Supabase
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabase } from "@/app/lib/supabaseClient";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
 interface Alumno {
   id: number;
   nombre: string;
-  apellido: string;
-  sede_id: number;
-}
-
-interface Instructor {
-  id: number;
-  nombre: string;
-}
-
-interface Sede {
-  id: number;
-  nombre: string;
+  edad: number;
+  sede: string | null;
+  instructor: string | null;
 }
 
 export default function DashboardPage() {
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
-  const [instructores, setInstructores] = useState<Instructor[]>([]);
-  const [sedes, setSedes] = useState<Sede[]>([]);
-  const [chartData, setChartData] = useState<{ name: string; value: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  // 🎯 Colores para los gráficos
+  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
+
+  // 🧩 Cargar datos desde Supabase
   useEffect(() => {
-    async function fetchData() {
-      const { data: alumnosData } = await supabase.from("alumnos").select("*");
-      const { data: instructoresData } = await supabase.from("instructores").select("*");
-      const { data: sedesData } = await supabase.from("sedes").select("*");
+    const fetchAlumnos = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("alumnos")
+          .select("id, nombre, edad, sede, instructor");
 
-      if (alumnosData && instructoresData && sedesData) {
-        setAlumnos(alumnosData);
-        setInstructores(instructoresData);
-        setSedes(sedesData);
-
-        // 📊 Agrupar alumnos por sede
-        const conteoPorSede = sedesData.map((sede) => ({
-          name: sede.nombre,
-          value: alumnosData.filter((a) => a.sede_id === sede.id).length,
-        }));
-
-        setChartData(conteoPorSede);
+        if (error) throw error;
+        setAlumnos(data || []);
+      } catch (err) {
+        console.error("❌ Error al cargar alumnos:", err);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
 
-    fetchData();
+    fetchAlumnos();
   }, []);
 
+  // 📊 Agrupar por sede para el gráfico
+  const alumnosPorSede = Object.values(
+    alumnos.reduce((acc: Record<string, any>, alumno) => {
+      const sede = alumno.sede || "Sin sede";
+      if (!acc[sede]) acc[sede] = { name: sede, value: 0 };
+      acc[sede].value += 1;
+      return acc;
+    }, {})
+  );
+
+  // 🧮 Total de alumnos
+  const totalAlumnos = alumnos.length;
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen text-gray-400">
+        Cargando información...
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white p-6">
-      <h1 className="text-3xl font-bold mb-6 text-center">
-        Panel de Control 🥋
+    <div className="p-6 space-y-8">
+      <h1 className="text-3xl font-bold text-center mb-6 text-white">
+        Panel de Control - Taekwon-Do Universal Chile
       </h1>
 
-      <p className="text-center text-gray-300 mb-10">
-        Visualiza el estado general del sistema de gestión Taekwondo.
-      </p>
-
-      {/* Tarjetas de resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <Card className="bg-gray-800 border border-gray-700 shadow-md">
+      {/* Tarjetas con métricas */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl">
           <CardHeader>
-            <CardTitle>👦 Alumnos</CardTitle>
+            <CardTitle className="text-gray-100">Total de alumnos</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-blue-400">{alumnos.length}</p>
+            <p className="text-4xl font-bold text-green-400">{totalAlumnos}</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gray-800 border border-gray-700 shadow-md">
+        <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl">
           <CardHeader>
-            <CardTitle>🧑‍🏫 Instructores</CardTitle>
+            <CardTitle className="text-gray-100">Sedes activas</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-green-400">{instructores.length}</p>
+            <p className="text-4xl font-bold text-blue-400">
+              {alumnosPorSede.length}
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gray-800 border border-gray-700 shadow-md">
+        <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl">
           <CardHeader>
-            <CardTitle>🏫 Sedes</CardTitle>
+            <CardTitle className="text-gray-100">Promedio de edad</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-purple-400">{sedes.length}</p>
+            <p className="text-4xl font-bold text-yellow-400">
+              {alumnos.length > 0
+                ? Math.round(
+                    alumnos.reduce((acc, a) => acc + a.edad, 0) / alumnos.length
+                  )
+                : 0}
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Gráfico */}
-      <Card className="bg-gray-800 border border-gray-700 shadow-md max-w-3xl mx-auto">
+      {/* 📊 Gráfico */}
+      <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl mt-8">
         <CardHeader>
-          <CardTitle>📊 Alumnos por Sede</CardTitle>
+          <CardTitle className="text-gray-100">Distribución por Sede</CardTitle>
         </CardHeader>
-        <CardContent className="flex justify-center">
-          {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
+        <CardContent>
+          {alumnosPorSede.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
               <PieChart>
                 <Pie
-                  data={chartData}
+                  data={alumnosPorSede}
                   dataKey="value"
-                  label={({ name, percent }: any) =>
-                    `${name} ${(percent * 100).toFixed(0)}%`
-                  }
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={130}
+                  label
                 >
-                  {chartData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                  {alumnosPorSede.map((_, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -133,7 +136,9 @@ export default function DashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-gray-400">No hay datos suficientes para mostrar.</p>
+            <p className="text-center text-gray-400 py-8">
+              No hay datos disponibles para mostrar.
+            </p>
           )}
         </CardContent>
       </Card>
