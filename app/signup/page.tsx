@@ -1,123 +1,118 @@
-"use client";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import React, { useState } from "react";
+import { supabase } from "@/app/lib/supabaseClient";
 
 export default function SignupPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage("");
-    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-    if (password !== confirmPassword) {
-      setMessage("⚠️ Las contraseñas no coinciden.");
-      setLoading(false);
-      return;
+      if (error) throw error;
+      setMessage("✅ Registro exitoso. Revisa tu correo para confirmar.");
+    } catch (err: any) {
+      setMessage(`❌ Error: ${err.message}`);
     }
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) {
-      setMessage("❌ Error al registrar el usuario: " + error.message);
-    } else {
-      setMessage("✅ Registro exitoso. Revisa tu correo para confirmar la cuenta.");
-      setEmail("");
-      setPassword("");
-      setConfirmPassword("");
-    }
-
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-      <div className="bg-gray-800 p-8 rounded-2xl shadow-lg w-full max-w-md">
-        <div className="text-center mb-6">
-          <img
-            src="/favicon.ico"
-            alt="ATUCH Logo"
-            className="mx-auto w-16 h-16 mb-3"
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100vh",
+        backgroundColor: "#0f172a",
+      }}
+    >
+      <form
+        onSubmit={handleSignup}
+        style={{
+          background: "#1e293b",
+          padding: "2rem",
+          borderRadius: "1rem",
+          width: "100%",
+          maxWidth: "400px",
+          color: "white",
+          boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
+        }}
+      >
+        <h2 style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+          Crear Cuenta
+        </h2>
+
+        <div style={{ marginBottom: "1rem" }}>
+          <label>Email</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "0.5rem",
+              borderRadius: "0.5rem",
+              border: "none",
+              marginTop: "0.3rem",
+            }}
           />
-          <h1 className="text-2xl font-bold">Crear una cuenta</h1>
-          <p className="text-gray-400 text-sm">
-            Regístrate para acceder al sistema ATUCH 🥋
-          </p>
         </div>
 
-        <form onSubmit={handleSignup} className="space-y-4">
-          <div>
-            <label className="block text-sm mb-1">Correo electrónico</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:border-blue-500"
-              placeholder="ejemplo@correo.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Contraseña</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:border-blue-500"
-              placeholder="********"
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Confirmar contraseña</label>
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-gray-700 border border-gray-600 focus:outline-none focus:border-blue-500"
-              placeholder="********"
-            />
-          </div>
+        <div style={{ marginBottom: "1rem" }}>
+          <label>Contraseña</label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "0.5rem",
+              borderRadius: "0.5rem",
+              border: "none",
+              marginTop: "0.3rem",
+            }}
+          />
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 py-2 rounded-lg font-semibold transition duration-200"
-          >
-            {loading ? "Registrando..." : "Registrarme"}
-          </button>
-        </form>
+        <button
+          type="submit"
+          style={{
+            width: "100%",
+            padding: "0.75rem",
+            border: "none",
+            borderRadius: "0.5rem",
+            backgroundColor: "#3b82f6",
+            color: "white",
+            fontWeight: "bold",
+            cursor: "pointer",
+            marginTop: "0.5rem",
+          }}
+        >
+          Registrarme
+        </button>
 
         {message && (
-          <p className="text-center text-sm mt-4 text-gray-300">{message}</p>
-        )}
-
-        <p className="text-center text-sm text-gray-400 mt-6">
-          ¿Ya tienes cuenta?{" "}
-          <a
-            href="/login"
-            className="text-blue-400 hover:text-blue-500 font-medium"
+          <p
+            style={{
+              marginTop: "1rem",
+              textAlign: "center",
+              color: message.startsWith("✅") ? "#22c55e" : "#ef4444",
+            }}
           >
-            Inicia sesión
-          </a>
-        </p>
-      </div>
+            {message}
+          </p>
+        )}
+      </form>
     </div>
   );
 }

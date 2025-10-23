@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient"; // conexión Supabase
+import { supabase } from "@/app/lib/supabaseClient"; // conexión Supabase
 import {
   PieChart,
   Pie,
