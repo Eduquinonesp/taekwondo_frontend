@@ -1,17 +1,66 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import React, { useState } from "react";
+import { supabase } from "@/app/lib/supabaseClient";
 
-// ✅ Deshabilita renderizado en servidor para esta página
+// ✅ evita el prerender en el servidor
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Cargamos el cliente de registro dinámicamente (solo en cliente)
-const SignupClient = dynamic(() => import("./SignupClient"), {
-  ssr: false,
-  loading: () => <p style={{ textAlign: "center", marginTop: "20px" }}>Cargando...</p>,
-});
+export default function SignupClient() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-export default function SignupPage() {
-  return <SignupClient />;
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      setMessage("✅ Registro exitoso. Revisa tu correo para confirmar la cuenta.");
+    } catch (error: any) {
+      setMessage(`❌ Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "2rem", maxWidth: "400px", margin: "auto" }}>
+      <h2>Crear cuenta</h2>
+      <form onSubmit={handleSignup}>
+        <div>
+          <label>Email:</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{ width: "100%", marginBottom: "10px" }}
+          />
+        </div>
+
+        <div>
+          <label>Contraseña:</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{ width: "100%", marginBottom: "10px" }}
+          />
+        </div>
+
+        <button type="submit" disabled={loading}>
+          {loading ? "Creando cuenta..." : "Registrarme"}
+        </button>
+      </form>
+
+      {message && <p style={{ marginTop: "15px" }}>{message}</p>}
+    </div>
+  );
 }
