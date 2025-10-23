@@ -1,10 +1,9 @@
-"use client"; // 👈 esta línea es la clave para arreglar el error
+"use client";
 
 import React, { useState } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const dynamic = "force-dynamic"; // ✅ esto sí puede quedar
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
