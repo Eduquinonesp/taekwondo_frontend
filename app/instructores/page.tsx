@@ -10,185 +10,241 @@ type Instructor = {
   apellido: string;
   grado: string;
   correo: string;
-  created_at: string | null;
 };
 
-const GRADOS = [
-  "I Dan",
-  "II Dan",
-  "III Dan",
-  "IV Dan",
-  "V Dan",
-  "VI Dan",
-  "VII Dan",
-  "VIII Dan",
-  "IX Dan",
-];
-
 export default function InstructoresPage() {
+  // Formulario
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
-  const [grado, setGrado] = useState(GRADOS[0]);
+  const [grado, setGrado] = useState("IV Dan");
   const [correo, setCorreo] = useState("");
-  const [sedeId, setSedeId] = useState<number | "">("");
-  const [sedes, setSedes] = useState<Sede[]>([]);
-  const [instructores, setInstructores] = useState<Instructor[]>([]);
-  const [guardando, setGuardando] = useState(false);
 
-  // Cargar sedes e instructores
+  // Sedes
+  const [sedes, setSedes] = useState<Sede[]>([]);
+  const [sedesSeleccionadas, setSedesSeleccionadas] = useState<number[]>([]);
+
+  // Listado para mostrar abajo (opcional)
+  const [instructores, setInstructores] = useState<Instructor[]>([]);
+  const [cargando, setCargando] = useState(false);
+
+  // Cargar sedes e instructores al abrir
   useEffect(() => {
-    const cargarDatos = async () => {
-      const { data: sedesData } = await supabase
+    const fetchData = async () => {
+      setCargando(true);
+
+      // 1) Traer sedes
+      const { data: sedesData, error: sedesErr } = await supabase
         .from("sedes")
         .select("id, nombre")
         .order("nombre", { ascending: true });
-      setSedes(sedesData || []);
 
-      const { data: instData } = await supabase
+      if (sedesErr) {
+        alert("Error cargando sedes: " + sedesErr.message);
+      } else {
+        setSedes(sedesData || []);
+      }
+
+      // 2) (Opcional) Traer instructores existentes para mostrar
+      const { data: instData, error: instErr } = await supabase
         .from("instructores")
-        .select("*")
-        .order("created_at", { ascending: false });
-      setInstructores(instData || []);
+        .select("id, nombre, apellido, grado, correo")
+        .order("id", { ascending: false });
+
+      if (!instErr && instData) setInstructores(instData);
+
+      setCargando(false);
     };
-    cargarDatos();
+
+    fetchData();
   }, []);
 
-  const limpiarFormulario = () => {
-    setNombre("");
-    setApellido("");
-    setGrado(GRADOS[0]);
-    setCorreo("");
-    setSedeId("");
+  // Manejar checkboxes de sedes
+  const toggleSede = (sedeId: number) => {
+    setSedesSeleccionadas((prev) =>
+      prev.includes(sedeId)
+        ? prev.filter((id) => id !== sedeId)
+        : [...prev, sedeId]
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!nombre.trim() || !apellido.trim() || !correo.trim() || sedeId === "") {
-      alert("Por favor completa todos los campos y elige una sede.");
+    if (!nombre.trim() || !apellido.trim() || !correo.trim()) {
+      alert("Completa nombre, apellido y correo.");
       return;
     }
 
-    setGuardando(true);
+    if (sedesSeleccionadas.length === 0) {
+      alert("Selecciona al menos una sede.");
+      return;
+    }
+
+    setCargando(true);
 
     try {
-      // PASO 1: Insertar instructor SIN sede_id
-      const { data: nuevoInstructor, error: errorInstructor } = await supabase
+      // 1) Insertar instructor y obtener su id
+      const { data: inserted, error: insertErr } = await supabase
         .from("instructores")
         .insert([{ nombre, apellido, grado, correo }])
         .select("id")
         .single();
 
-      if (errorInstructor) throw errorInstructor;
+      if (insertErr) {
+        throw new Error("Error guardando instructor: " + insertErr.message);
+      }
 
-      // PASO 2: Insertar relación en instructores_sedes
-      const { error: errorRelacion } = await supabase
+      const instructorId = inserted!.id;
+
+      // 2) Crear los vínculos en la tabla puente (uno por cada sede seleccionada)
+      const filas = sedesSeleccionadas.map((sedeId) => ({
+        instructor_id: instructorId,
+        sede_id: sedeId,
+        rol_en_sede: "Instructor", // puedes ajustar si quieres guardar “Maestro” u otro
+      }));
+
+      const { error: linksErr } = await supabase
         .from("instructores_sedes")
-        .insert([
-          {
-            instructor_id: nuevoInstructor.id,
-            sede_id: sedeId,
-            rol_en_sede: "Instructor",
-          },
-        ]);
+        .insert(filas);
 
-      if (errorRelacion) throw errorRelacion;
+      if (linksErr) {
+        throw new Error("Error vinculando sedes: " + linksErr.message);
+      }
 
-      // Actualizar lista
+      alert("✅ Instructor guardado y asociado a sus sedes.");
+
+      // Limpiar form
+      setNombre("");
+      setApellido("");
+      setCorreo("");
+      setGrado("IV Dan");
+      setSedesSeleccionadas([]);
+
+      // Refrescar listado
       const { data: instData } = await supabase
         .from("instructores")
-        .select("*")
-        .order("created_at", { ascending: false });
-
+        .select("id, nombre, apellido, grado, correo")
+        .order("id", { ascending: false });
       setInstructores(instData || []);
-      limpiarFormulario();
-      alert("✅ Instructor guardado correctamente");
     } catch (err: any) {
-      console.error(err);
-      alert("❌ Ocurrió un error al guardar: " + err.message);
+      alert(err.message);
     } finally {
-      setGuardando(false);
+      setCargando(false);
     }
   };
 
+  /* ------------- MODO EDICIÓN (opcional) -------------
+     Si más adelante quieres editar un instructor existente,
+     antes de insertar los nuevos vínculos, borra los anteriores:
+
+     await supabase
+       .from("instructores_sedes")
+       .delete()
+       .eq("instructor_id", instructorId);
+
+     Y luego haces el insert de 'filas' como arriba.
+  ---------------------------------------------------- */
+
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <h1 className="text-2xl font-bold mb-4">👨‍🏫 Gestión de Instructores</h1>
+    <div className="max-w-4xl mx-auto p-6 text-white">
+      <h1 className="text-2xl font-bold mb-6">👨‍🏫 Gestión de Instructores</h1>
 
       <form
         onSubmit={handleSubmit}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/40 p-4 rounded-xl"
+        className="bg-slate-800/60 rounded-xl p-4 space-y-4"
       >
-        <input
-          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
-          placeholder="Nombre"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-        />
-        <input
-          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
-          placeholder="Apellido"
-          value={apellido}
-          onChange={(e) => setApellido(e.target.value)}
-        />
-        <select
-          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
-          value={grado}
-          onChange={(e) => setGrado(e.target.value)}
-        >
-          {GRADOS.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
-        <input
-          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
-          placeholder="Correo"
-          type="email"
-          value={correo}
-          onChange={(e) => setCorreo(e.target.value)}
-        />
-        <select
-          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none md:col-span-2"
-          value={sedeId === "" ? "" : String(sedeId)}
-          onChange={(e) => setSedeId(Number(e.target.value))}
-        >
-          <option value="">— Elegir sede —</option>
-          {sedes.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nombre}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Nombre"
+            className="px-3 py-2 rounded bg-slate-900 outline-none"
+          />
+          <input
+            value={apellido}
+            onChange={(e) => setApellido(e.target.value)}
+            placeholder="Apellido"
+            className="px-3 py-2 rounded bg-slate-900 outline-none"
+          />
+          <select
+            value={grado}
+            onChange={(e) => setGrado(e.target.value)}
+            className="px-3 py-2 rounded bg-slate-900 outline-none"
+          >
+            {[
+              "I Dan",
+              "II Dan",
+              "III Dan",
+              "IV Dan",
+              "V Dan",
+              "VI Dan",
+              "VII Dan",
+              "VIII Dan",
+              "IX Dan",
+            ].map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+          <input
+            value={correo}
+            onChange={(e) => setCorreo(e.target.value)}
+            placeholder="Correo"
+            className="px-3 py-2 rounded bg-slate-900 outline-none"
+          />
+        </div>
+
+        {/* Sedes como checkboxes */}
+        <div className="mt-4">
+          <p className="mb-2 font-medium">Sedes donde enseña:</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {sedes.map((s) => (
+              <label
+                key={s.id}
+                className="flex items-center gap-2 bg-slate-900 rounded px-3 py-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={sedesSeleccionadas.includes(s.id)}
+                  onChange={() => toggleSede(s.id)}
+                />
+                <span>{s.nombre}</span>
+              </label>
+            ))}
+          </div>
+        </div>
 
         <button
           type="submit"
-          disabled={guardando}
-          className="md:col-span-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 px-4 py-2 rounded font-semibold"
+          disabled={cargando}
+          className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 rounded px-4 py-2 font-semibold disabled:opacity-60"
         >
-          {guardando ? "Guardando..." : "Guardar Instructor"}
+          {cargando ? "Guardando..." : "Guardar Instructor"}
         </button>
       </form>
 
-      <h2 className="text-xl font-semibold mt-8 mb-3">📋 Lista de Instructores</h2>
-      {instructores.length === 0 ? (
-        <p className="text-slate-400">No hay instructores registrados.</p>
-      ) : (
-        <ul className="space-y-2">
-          {instructores.map((i) => (
-            <li
-              key={i.id}
-              className="bg-slate-900/40 border border-slate-800 rounded px-3 py-2"
-            >
-              <div className="font-medium">
-                {i.nombre} {i.apellido} — {i.grado}
-              </div>
-              <div className="text-slate-400 text-sm">{i.correo}</div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Lista (opcional) */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-3">📋 Lista de Instructores</h2>
+        {instructores.length === 0 ? (
+          <p className="text-slate-300">No hay instructores registrados.</p>
+        ) : (
+          <ul className="space-y-2">
+            {instructores.map((i) => (
+              <li
+                key={i.id}
+                className="bg-slate-800/60 rounded px-3 py-2 flex justify-between"
+              >
+                <span>
+                  {i.nombre} {i.apellido} — {i.grado}
+                </span>
+                <span className="text-slate-300">{i.correo}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
