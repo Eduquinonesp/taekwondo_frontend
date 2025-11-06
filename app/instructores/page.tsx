@@ -1,78 +1,62 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/app/lib/supabaseClient"; // ajusta la ruta si tu client está en otro lugar
+import { supabase } from "@/app/lib/supabaseClient";
 
-// Opciones visibles para el usuario y valor numérico que se guarda en BD
-const GRADOS = [
-  { label: "I Dan", value: 1 },
-  { label: "II Dan", value: 2 },
-  { label: "III Dan", value: 3 },
-  { label: "IV Dan", value: 4 },
-  { label: "V Dan", value: 5 },
-  { label: "VI Dan", value: 6 },
-  { label: "VII Dan", value: 7 },
-  { label: "VIII Dan", value: 8 },
-  { label: "IX Dan", value: 9 },
-];
-
+type Sede = { id: number; nombre: string };
 type Instructor = {
   id: number;
   nombre: string;
   apellido: string;
-  grado: number;
+  grado: string;
   correo: string;
-  sede_id?: number | null;
+  created_at: string | null;
 };
 
-type Sede = {
-  id: number;
-  nombre: string;
-};
+const GRADOS = [
+  "I Dan",
+  "II Dan",
+  "III Dan",
+  "IV Dan",
+  "V Dan",
+  "VI Dan",
+  "VII Dan",
+  "VIII Dan",
+  "IX Dan",
+];
 
 export default function InstructoresPage() {
-  // Form
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
-  const [grado, setGrado] = useState<string>(""); // guardamos como string del <select>, luego convertimos a número
+  const [grado, setGrado] = useState(GRADOS[0]);
   const [correo, setCorreo] = useState("");
-  const [sedeId, setSedeId] = useState<string>(""); // opcional
-
-  // Datos
-  const [instructores, setInstructores] = useState<Instructor[]>([]);
+  const [sedeId, setSedeId] = useState<number | "">("");
   const [sedes, setSedes] = useState<Sede[]>([]);
-  const [cargando, setCargando] = useState(false);
+  const [instructores, setInstructores] = useState<Instructor[]>([]);
+  const [guardando, setGuardando] = useState(false);
 
-  // Cargar listado al entrar
+  // Cargar sedes e instructores
   useEffect(() => {
-    const fetchData = async () => {
-      setCargando(true);
-      const { data, error } = await supabase
-        .from("instructores")
-        .select("*")
-        .order("apellido", { ascending: true });
-
-      if (!error && data) setInstructores(data as Instructor[]);
-      setCargando(false);
-    };
-
-    const fetchSedes = async () => {
-      const { data, error } = await supabase
+    const cargarDatos = async () => {
+      const { data: sedesData } = await supabase
         .from("sedes")
         .select("id, nombre")
-        .order("nombre");
+        .order("nombre", { ascending: true });
+      setSedes(sedesData || []);
 
-      if (!error && data) setSedes(data as Sede[]);
+      const { data: instData } = await supabase
+        .from("instructores")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setInstructores(instData || []);
     };
-
-    fetchData();
-    fetchSedes();
+    cargarDatos();
   }, []);
 
   const limpiarFormulario = () => {
     setNombre("");
     setApellido("");
-    setGrado("");
+    setGrado(GRADOS[0]);
     setCorreo("");
     setSedeId("");
   };
@@ -80,91 +64,97 @@ export default function InstructoresPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!nombre.trim()) return alert("Falta el NOMBRE");
-    if (!apellido.trim()) return alert("Falta el APELLIDO");
-    if (!grado) return alert("Selecciona el GRADO");
-    if (!correo.trim()) return alert("Falta el CORREO");
-
-    const gradoNumero = Number(grado);
-    const payload: any = {
-      nombre,
-      apellido,
-      grado: gradoNumero,
-      correo,
-    };
-
-    // incluir sede si el usuario seleccionó una
-    if (sedeId) payload.sede_id = Number(sedeId);
-
-    const { error } = await supabase.from("instructores").insert([payload]);
-
-    if (error) {
-      alert("Ocurrió un problema al guardar: " + error.message);
+    if (!nombre.trim() || !apellido.trim() || !correo.trim() || sedeId === "") {
+      alert("Por favor completa todos los campos y elige una sede.");
       return;
     }
 
-    alert("✅ Instructor agregado correctamente ✨");
-    limpiarFormulario();
+    setGuardando(true);
 
-    // refrescar grilla
-    const { data, error: err2 } = await supabase
-      .from("instructores")
-      .select("*")
-      .order("apellido", { ascending: true });
-    if (!err2 && data) setInstructores(data as Instructor[]);
+    try {
+      // PASO 1: Insertar instructor SIN sede_id
+      const { data: nuevoInstructor, error: errorInstructor } = await supabase
+        .from("instructores")
+        .insert([{ nombre, apellido, grado, correo }])
+        .select("id")
+        .single();
+
+      if (errorInstructor) throw errorInstructor;
+
+      // PASO 2: Insertar relación en instructores_sedes
+      const { error: errorRelacion } = await supabase
+        .from("instructores_sedes")
+        .insert([
+          {
+            instructor_id: nuevoInstructor.id,
+            sede_id: sedeId,
+            rol_en_sede: "Instructor",
+          },
+        ]);
+
+      if (errorRelacion) throw errorRelacion;
+
+      // Actualizar lista
+      const { data: instData } = await supabase
+        .from("instructores")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      setInstructores(instData || []);
+      limpiarFormulario();
+      alert("✅ Instructor guardado correctamente");
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Ocurrió un error al guardar: " + err.message);
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
-    <div className="p-6 text-white">
-      <h2 className="text-2xl font-bold mb-4">👨‍🏫 Gestión de Instructores</h2>
+    <div className="mx-auto max-w-4xl p-6">
+      <h1 className="text-2xl font-bold mb-4">👨‍🏫 Gestión de Instructores</h1>
 
       <form
         onSubmit={handleSubmit}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl"
+        className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-900/40 p-4 rounded-xl"
       >
         <input
-          className="bg-gray-800 border border-gray-700 p-3 rounded"
+          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
           placeholder="Nombre"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
         />
-
         <input
-          className="bg-gray-800 border border-gray-700 p-3 rounded"
+          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
           placeholder="Apellido"
           value={apellido}
           onChange={(e) => setApellido(e.target.value)}
         />
-
-        {/* GRADO como SELECT */}
         <select
-          className="bg-gray-800 border border-gray-700 p-3 rounded"
+          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
           value={grado}
           onChange={(e) => setGrado(e.target.value)}
         >
-          <option value="">Selecciona grado</option>
           {GRADOS.map((g) => (
-            <option key={g.value} value={g.value}>
-              {g.label}
+            <option key={g} value={g}>
+              {g}
             </option>
           ))}
         </select>
-
         <input
-          className="bg-gray-800 border border-gray-700 p-3 rounded"
+          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none"
           placeholder="Correo"
           type="email"
           value={correo}
           onChange={(e) => setCorreo(e.target.value)}
         />
-
-        {/* SEDE opcional */}
         <select
-          className="bg-gray-800 border border-gray-700 p-3 rounded md:col-span-2"
-          value={sedeId}
-          onChange={(e) => setSedeId(e.target.value)}
+          className="px-3 py-2 rounded border border-slate-700 bg-slate-800 outline-none md:col-span-2"
+          value={sedeId === "" ? "" : String(sedeId)}
+          onChange={(e) => setSedeId(Number(e.target.value))}
         >
-          <option value="">Selecciona sede (opcional)</option>
+          <option value="">— Elegir sede —</option>
           {sedes.map((s) => (
             <option key={s.id} value={s.id}>
               {s.nombre}
@@ -174,49 +164,30 @@ export default function InstructoresPage() {
 
         <button
           type="submit"
-          className="mt-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded md:col-span-2"
+          disabled={guardando}
+          className="md:col-span-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 px-4 py-2 rounded font-semibold"
         >
-          Guardar Instructor
+          {guardando ? "Guardando..." : "Guardar Instructor"}
         </button>
       </form>
 
-      <h3 className="text-xl font-semibold mt-8 mb-3">📋 Lista de Instructores</h3>
-
-      {cargando ? (
-        <p className="text-gray-300">Cargando…</p>
-      ) : instructores.length === 0 ? (
-        <p className="text-gray-300">No hay instructores registrados.</p>
+      <h2 className="text-xl font-semibold mt-8 mb-3">📋 Lista de Instructores</h2>
+      {instructores.length === 0 ? (
+        <p className="text-slate-400">No hay instructores registrados.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-gray-900 border border-gray-700 rounded">
-            <thead>
-              <tr className="bg-gray-800">
-                <th className="text-left p-3">Nombre</th>
-                <th className="text-left p-3">Apellido</th>
-                <th className="text-left p-3">Grado</th>
-                <th className="text-left p-3">Correo</th>
-                <th className="text-left p-3">Sede</th>
-              </tr>
-            </thead>
-            <tbody>
-              {instructores.map((i) => {
-                const gradoLabel =
-                  GRADOS.find((g) => g.value === i.grado)?.label ?? i.grado;
-                const sedeNombre =
-                  sedes.find((s) => s.id === (i.sede_id ?? -1))?.nombre ?? "-";
-                return (
-                  <tr key={i.id} className="border-t border-gray-700">
-                    <td className="p-3">{i.nombre}</td>
-                    <td className="p-3">{i.apellido}</td>
-                    <td className="p-3">{gradoLabel}</td>
-                    <td className="p-3">{i.correo}</td>
-                    <td className="p-3">{sedeNombre}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="space-y-2">
+          {instructores.map((i) => (
+            <li
+              key={i.id}
+              className="bg-slate-900/40 border border-slate-800 rounded px-3 py-2"
+            >
+              <div className="font-medium">
+                {i.nombre} {i.apellido} — {i.grado}
+              </div>
+              <div className="text-slate-400 text-sm">{i.correo}</div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
