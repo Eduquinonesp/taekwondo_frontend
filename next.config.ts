@@ -1,12 +1,9 @@
-/** @type {import('next').NextConfig} */
+// next.config.ts
 const nextConfig = {
-  reactStrictMode: true,
   experimental: {
-    // ⚠️ elimina cualquier valor no soportado como dynamicIO o cacheComponents
-    serverActions: true,
+    // Evita el warning de "boolean" en serverActions:
+    serverActions: {},
   },
-  // ✅ evita el prerender en rutas dinámicas
-  output: "standalone",
 };
 
-module.exports = nextConfig;
+export default nextConfig;
