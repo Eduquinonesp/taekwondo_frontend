@@ -1,163 +1,219 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/app/lib/supabaseClient"; // conexión Supabase
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-  PieLabelRenderProps,
-} from "recharts";
-
+import { supabase } from "@/app/lib/supabaseClient";
 import {
   Card,
   CardHeader,
   CardTitle,
   CardContent,
-} from "@/app/components/ui/card"; // ✅ Ruta corregida
+} from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/app/components/ui/select";
+import { Loader2, PlusCircle } from "lucide-react";
 
-// 🎨 Colores del gráfico
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#A020F0", "#FF4C4C"];
-
-// ✅ Tipo de datos del alumno
+// Tipo de datos
 type Alumno = {
   id: number;
-  nombre: string;
-  apellido: string;
+  nombres: string;
+  apellidos: string;
   edad: number;
+  grado: string;
   sede: string;
   instructor: string;
 };
 
-// ✅ Tipo de datos agrupados para el gráfico
-type DataChart = {
-  name: string;
-  value: number;
-};
-
-// ✅ Función para mostrar etiquetas en el gráfico
-const renderLabel = (props: PieLabelRenderProps): string => {
-  const { name, value } = props as unknown as { name: string; value: number };
-  return `${name} (${value})`;
-};
-
 export default function AlumnosPage() {
   const [alumnos, setAlumnos] = useState<Alumno[]>([]);
-  const [dataChart, setDataChart] = useState<DataChart[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nuevoAlumno, setNuevoAlumno] = useState({
+    nombres: "",
+    apellidos: "",
+    rut: "",
+    fecha_nacimiento: "",
+    apoderado: "",
+    telefono_apoderado: "",
+    correo_apoderado: "",
+    grado: "",
+    sede_id: "",
+    instructor_id: "",
+  });
+  const [sedes, setSedes] = useState<any[]>([]);
+  const [instructores, setInstructores] = useState<any[]>([]);
 
-  // ✅ Cargar alumnos desde Supabase
+  // Cargar alumnos
   useEffect(() => {
-    const fetchAlumnos = async () => {
+    const fetchData = async () => {
       const { data, error } = await supabase
         .from("alumnos")
-        .select("id, nombre, apellido, edad, sede, instructor");
-
-      if (error) {
-        console.error("Error al cargar alumnos:", error);
-      } else {
-        setAlumnos(data as Alumno[]);
-
-        // 🔢 Agrupar por sede para el gráfico
-        const agrupado: Record<string, number> = {};
-        data.forEach((a) => {
-          agrupado[a.sede] = (agrupado[a.sede] || 0) + 1;
-        });
-
-        const resultado = Object.keys(agrupado).map((key) => ({
-          name: key,
-          value: agrupado[key],
-        }));
-
-        setDataChart(resultado);
-      }
+        .select("id, nombres, apellidos, edad, grado, sedes(nombre), instructores(nombre)");
+      if (!error && data) setAlumnos(data as any);
+      setLoading(false);
     };
 
-    fetchAlumnos();
+    const fetchSedes = async () => {
+      const { data } = await supabase.from("sedes").select("id, nombre");
+      if (data) setSedes(data);
+    };
+
+    const fetchInstructores = async () => {
+      const { data } = await supabase.from("instructores").select("id, nombre");
+      if (data) setInstructores(data);
+    };
+
+    fetchData();
+    fetchSedes();
+    fetchInstructores();
   }, []);
 
+  const handleChange = (e: any) => {
+    setNuevoAlumno({ ...nuevoAlumno, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: any) => {
+    e.preventDefault();
+    const { error } = await supabase.from("alumnos").insert([nuevoAlumno]);
+    if (error) alert(error.message);
+    else {
+      alert("Alumno agregado correctamente 🎉");
+      setNuevoAlumno({
+        nombres: "",
+        apellidos: "",
+        rut: "",
+        fecha_nacimiento: "",
+        apoderado: "",
+        telefono_apoderado: "",
+        correo_apoderado: "",
+        grado: "",
+        sede_id: "",
+        instructor_id: "",
+      });
+    }
+  };
+
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold text-white mb-6 text-center">
-        Registro de Alumnos
+    <div className="p-8 space-y-8">
+      <h1 className="text-3xl font-bold text-center text-white">
+        🥋 Registro de Alumnos
       </h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* 🧾 Tabla de alumnos */}
-        <Card className="bg-[#1E1E1E] border border-gray-700 text-white">
-          <CardHeader>
-            <CardTitle>Lista de Alumnos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <table className="w-full text-sm text-left border-collapse">
+      {/* FORMULARIO */}
+      <Card className="bg-gray-900 border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-white">Agregar Alumno</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <Input
+              name="nombres"
+              placeholder="Nombres"
+              value={nuevoAlumno.nombres}
+              onChange={handleChange}
+              className="bg-gray-800 text-white border-gray-600"
+            />
+            <Input
+              name="apellidos"
+              placeholder="Apellidos"
+              value={nuevoAlumno.apellidos}
+              onChange={handleChange}
+              className="bg-gray-800 text-white border-gray-600"
+            />
+            <Input
+              name="rut"
+              placeholder="RUT"
+              value={nuevoAlumno.rut}
+              onChange={handleChange}
+              className="bg-gray-800 text-white border-gray-600"
+            />
+            <Input
+              type="date"
+              name="fecha_nacimiento"
+              value={nuevoAlumno.fecha_nacimiento}
+              onChange={handleChange}
+              className="bg-gray-800 text-white border-gray-600"
+            />
+            <Input
+              name="grado"
+              placeholder="Grado"
+              value={nuevoAlumno.grado}
+              onChange={handleChange}
+              className="bg-gray-800 text-white border-gray-600"
+            />
+            <Select
+              onValueChange={(val) => setNuevoAlumno({ ...nuevoAlumno, sede_id: val })}
+            >
+              <SelectTrigger className="bg-gray-800 text-white border-gray-600">
+                <SelectValue placeholder="Seleccionar sede" />
+              </SelectTrigger>
+              <SelectContent>
+                {sedes.map((sede) => (
+                  <SelectItem key={sede.id} value={sede.id.toString()}>
+                    {sede.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              onValueChange={(val) => setNuevoAlumno({ ...nuevoAlumno, instructor_id: val })}
+            >
+              <SelectTrigger className="bg-gray-800 text-white border-gray-600">
+                <SelectValue placeholder="Seleccionar instructor" />
+              </SelectTrigger>
+              <SelectContent>
+                {instructores.map((inst) => (
+                  <SelectItem key={inst.id} value={inst.id.toString()}>
+                    {inst.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="submit"
+              className="bg-green-600 hover:bg-green-700 text-white col-span-2 md:col-span-3 mt-2"
+            >
+              <PlusCircle className="w-5 h-5 mr-2" /> Guardar Alumno
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* LISTA */}
+      <Card className="bg-gray-900 border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-white">Lista de Alumnos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-gray-400">Cargando alumnos...</p>
+          ) : alumnos.length === 0 ? (
+            <p className="text-gray-400">No hay alumnos registrados aún.</p>
+          ) : (
+            <table className="w-full text-left text-gray-300 border-collapse">
               <thead>
-                <tr className="text-gray-400 border-b border-gray-700">
+                <tr className="border-b border-gray-700">
                   <th className="p-2">Nombre</th>
-                  <th className="p-2">Apellido</th>
                   <th className="p-2">Edad</th>
+                  <th className="p-2">Grado</th>
                   <th className="p-2">Sede</th>
                   <th className="p-2">Instructor</th>
                 </tr>
               </thead>
               <tbody>
-                {alumnos.map((alumno) => (
-                  <tr
-                    key={alumno.id}
-                    className="border-b border-gray-800 hover:bg-gray-800 transition"
-                  >
-                    <td className="p-2">{alumno.nombre}</td>
-                    <td className="p-2">{alumno.apellido}</td>
-                    <td className="p-2 text-center">{alumno.edad}</td>
-                    <td className="p-2">{alumno.sede}</td>
-                    <td className="p-2">{alumno.instructor}</td>
+                {alumnos.map((a) => (
+                  <tr key={a.id} className="hover:bg-gray-800">
+                    <td className="p-2">{a.nombres} {a.apellidos}</td>
+                    <td className="p-2">{a.edad}</td>
+                    <td className="p-2">{a.grado}</td>
+                    <td className="p-2">{(a as any).sedes?.nombre || "—"}</td>
+                    <td className="p-2">{(a as any).instructores?.nombre || "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
-
-        {/* 🥧 Gráfico por sede */}
-        <Card className="bg-[#1E1E1E] border border-gray-700 text-white">
-          <CardHeader>
-            <CardTitle>Distribución por Sede</CardTitle>
-          </CardHeader>
-          <CardContent className="flex justify-center items-center h-[400px]">
-            {dataChart.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dataChart}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={renderLabel}
-                    outerRadius={150}
-                    dataKey="value"
-                  >
-                    {dataChart.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#111",
-                      border: "1px solid #444",
-                      borderRadius: "8px",
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-gray-400">Cargando datos...</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
