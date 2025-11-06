@@ -3,16 +3,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-// 👇 Rutas relativas (evitan el error en Render)
+// Mantengo estos, porque sí existen en tu proyecto y compilaban bien
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "../components/ui/select";
 import {
   Card,
   CardHeader,
@@ -45,7 +38,6 @@ type Alumno = {
   grado: string | null;
   sede_id: number | null;
   instructor_id: number | null;
-  // Relaciones (si están definidas en FK de Supabase)
   sedes?: { nombre: string } | null;
   instructores?: { nombres: string; apellidos: string } | null;
 };
@@ -106,22 +98,19 @@ export default function AlumnosPage() {
     (async () => {
       setLoading(true);
 
-      // Sedes
-      const { data: sedesData, error: sedesErr } = await supabase
+      const { data: sedesData } = await supabase
         .from("sedes")
         .select("id, nombre")
         .order("nombre", { ascending: true });
-      if (!sedesErr && sedesData) setSedes(sedesData);
+      if (sedesData) setSedes(sedesData);
 
-      // Instructores
-      const { data: instData, error: instErr } = await supabase
+      const { data: instData } = await supabase
         .from("instructores")
         .select("id, nombres, apellidos")
         .order("nombres", { ascending: true });
-      if (!instErr && instData) setInstructores(instData);
+      if (instData) setInstructores(instData);
 
-      // Alumnos (con relaciones si existen FK)
-      const { data: alumnosData, error: alumnosErr } = await supabase
+      const { data: alumnosData } = await supabase
         .from("alumnos")
         .select(
           "id, nombres, apellidos, rut, fecha_nacimiento, edad, telefono, email, direccion, grado, sede_id, instructor_id, sedes(nombre), instructores(nombres, apellidos)"
@@ -129,7 +118,7 @@ export default function AlumnosPage() {
         .order("apellidos", { ascending: true })
         .order("nombres", { ascending: true });
 
-      if (!alumnosErr && alumnosData) setAlumnos(alumnosData as Alumno[]);
+      if (alumnosData) setAlumnos(alumnosData as Alumno[]);
       setLoading(false);
     })();
   }, []);
@@ -137,7 +126,6 @@ export default function AlumnosPage() {
   // -------------------- Crear alumno --------------------
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    // Validaciones mínimas
     if (!form.nombres.trim() || !form.apellidos.trim()) {
       alert("Por favor completa Nombres y Apellidos.");
       return;
@@ -178,7 +166,6 @@ export default function AlumnosPage() {
 
     if (data && data.length > 0) {
       setAlumnos((prev) => [data[0] as Alumno, ...prev]);
-      // Reset del formulario
       setForm({
         nombres: "",
         apellidos: "",
@@ -248,42 +235,34 @@ export default function AlumnosPage() {
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Sede</label>
-            <Select
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={filtroSede}
-              onValueChange={(v) => setFiltroSede(v)}
+              onChange={(e) => setFiltroSede(e.target.value)}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona sede" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todas</SelectItem>
-                {sedes.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <option value="todos">Todas</option>
+              {sedes.map((s) => (
+                <option key={s.id} value={String(s.id)}>
+                  {s.nombre}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Instructor</label>
-            <Select
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={filtroInstructor}
-              onValueChange={(v) => setFiltroInstructor(v)}
+              onChange={(e) => setFiltroInstructor(e.target.value)}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona instructor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {instructores.map((i) => (
-                  <SelectItem key={i.id} value={String(i.id)}>
-                    {i.nombres} {i.apellidos}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <option value="todos">Todos</option>
+              {instructores.map((i) => (
+                <option key={i.id} value={String(i.id)}>
+                  {i.nombres} {i.apellidos}
+                </option>
+              ))}
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -355,7 +334,7 @@ export default function AlumnosPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 md:col-span-3">
               <label className="text-sm font-medium">Dirección</label>
               <Input
                 value={form.direccion}
@@ -368,61 +347,52 @@ export default function AlumnosPage() {
 
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Grado</label>
-              <Select
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={form.grado}
-                onValueChange={(v) => setForm((f) => ({ ...f, grado: v }))}
+                onChange={(e) => setForm((f) => ({ ...f, grado: e.target.value }))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona grado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {GRADOS.map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="">Selecciona grado</option>
+                {GRADOS.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Sede</label>
-              <Select
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={form.sede_id}
-                onValueChange={(v) => setForm((f) => ({ ...f, sede_id: v }))}
+                onChange={(e) => setForm((f) => ({ ...f, sede_id: e.target.value }))}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona sede" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sedes.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="">Selecciona sede</option>
+                {sedes.map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Instructor</label>
-              <Select
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={form.instructor_id}
-                onValueChange={(v) =>
-                  setForm((f) => ({ ...f, instructor_id: v }))
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, instructor_id: e.target.value }))
                 }
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona instructor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {instructores.map((i) => (
-                    <SelectItem key={i.id} value={String(i.id)}>
-                      {i.nombres} {i.apellidos}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="">Selecciona instructor</option>
+                {instructores.map((i) => (
+                  <option key={i.id} value={String(i.id)}>
+                    {i.nombres} {i.apellidos}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="md:col-span-3 flex justify-end">
