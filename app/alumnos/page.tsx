@@ -3,15 +3,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-// Mantengo estos, porque sí existen en tu proyecto y compilaban bien
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 
 // -------------------- Tipos --------------------
 type Sede = {
@@ -38,8 +32,13 @@ type Alumno = {
   grado: string | null;
   sede_id: number | null;
   instructor_id: number | null;
-  sedes?: { nombre: string } | null;
-  instructores?: { nombres: string; apellidos: string } | null;
+
+  // Supabase nos está devolviendo arrays para las relaciones
+  sedes?: { nombre: string }[] | { nombre: string } | null;
+  instructores?:
+    | { nombres: string; apellidos: string }[]
+    | { nombres: string; apellidos: string }
+    | null;
 };
 
 // Para el selector de grado
@@ -64,6 +63,18 @@ const GRADOS = [
   "VIII Dan",
   "IX Dan",
 ];
+
+function getSedeNombre(sedes: Alumno["sedes"]): string | undefined {
+  if (!sedes) return undefined;
+  if (Array.isArray(sedes)) return sedes[0]?.nombre;
+  return sedes.nombre;
+}
+
+function getInstructorNombre(inst: Alumno["instructores"]): string | undefined {
+  if (!inst) return undefined;
+  if (Array.isArray(inst)) return inst[0] ? `${inst[0].nombres} ${inst[0].apellidos}` : undefined;
+  return `${inst.nombres} ${inst.apellidos}`;
+}
 
 // -------------------- Página --------------------
 export default function AlumnosPage() {
@@ -110,7 +121,7 @@ export default function AlumnosPage() {
         .order("nombres", { ascending: true });
       if (instData) setInstructores(instData);
 
-      const { data: alumnosData } = await supabase
+      const { data: alumnosData, error: alumnosErr } = await supabase
         .from("alumnos")
         .select(
           "id, nombres, apellidos, rut, fecha_nacimiento, edad, telefono, email, direccion, grado, sede_id, instructor_id, sedes(nombre), instructores(nombres, apellidos)"
@@ -118,7 +129,14 @@ export default function AlumnosPage() {
         .order("apellidos", { ascending: true })
         .order("nombres", { ascending: true });
 
-      if (alumnosData) setAlumnos(alumnosData as Alumno[]);
+      if (alumnosErr) {
+        console.error(alumnosErr);
+      }
+      if (alumnosData) {
+        // Tipar de forma segura por la diferencia de arrays/objeto que puede devolver Supabase
+        setAlumnos(alumnosData as unknown as Alumno[]);
+      }
+
       setLoading(false);
     })();
   }, []);
@@ -153,9 +171,12 @@ export default function AlumnosPage() {
       fecha_nacimiento: form.fecha_nacimiento || null,
     };
 
-    const { data, error } = await supabase.from("alumnos").insert(payload).select(
-      "id, nombres, apellidos, rut, fecha_nacimiento, edad, telefono, email, direccion, grado, sede_id, instructor_id, sedes(nombre), instructores(nombres, apellidos)"
-    );
+    const { data, error } = await supabase
+      .from("alumnos")
+      .insert(payload)
+      .select(
+        "id, nombres, apellidos, rut, fecha_nacimiento, edad, telefono, email, direccion, grado, sede_id, instructor_id, sedes(nombre), instructores(nombres, apellidos)"
+      );
 
     setSubmitting(false);
     if (error) {
@@ -165,7 +186,7 @@ export default function AlumnosPage() {
     }
 
     if (data && data.length > 0) {
-      setAlumnos((prev) => [data[0] as Alumno, ...prev]);
+      setAlumnos((prev) => [data[0] as unknown as Alumno, ...prev]);
       setForm({
         nombres: "",
         apellidos: "",
@@ -431,30 +452,28 @@ export default function AlumnosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {alumnosFiltrados.map((a) => (
-                    <tr key={a.id} className="border-t">
-                      <td className="px-3 py-2">
-                        {a.nombres} {a.apellidos}
-                      </td>
-                      <td className="px-3 py-2">{a.rut}</td>
-                      <td className="px-3 py-2">{a.grado || "-"}</td>
-                      <td className="px-3 py-2">{a.edad ?? "-"}</td>
-                      <td className="px-3 py-2">
-                        {a.sedes?.nombre || "-"}
-                      </td>
-                      <td className="px-3 py-2">
-                        {a.instructores
-                          ? `${a.instructores.nombres} ${a.instructores.apellidos}`
-                          : "-"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-col">
-                          <span>{a.telefono || "-"}</span>
-                          <span className="text-gray-500">{a.email || "-"}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {alumnosFiltrados.map((a) => {
+                    const sedeNombre = getSedeNombre(a.sedes);
+                    const instructorNombre = getInstructorNombre(a.instructores);
+                    return (
+                      <tr key={a.id} className="border-t">
+                        <td className="px-3 py-2">
+                          {a.nombres} {a.apellidos}
+                        </td>
+                        <td className="px-3 py-2">{a.rut}</td>
+                        <td className="px-3 py-2">{a.grado || "-"}</td>
+                        <td className="px-3 py-2">{a.edad ?? "-"}</td>
+                        <td className="px-3 py-2">{sedeNombre || "-"}</td>
+                        <td className="px-3 py-2">{instructorNombre || "-"}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col">
+                            <span>{a.telefono || "-"}</span>
+                            <span className="text-gray-500">{a.email || "-"}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
