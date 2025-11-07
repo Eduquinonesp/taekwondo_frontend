@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/app/lib/supabaseClient";
 import {
   Card,
   CardHeader,
@@ -8,252 +9,186 @@ import {
   CardContent,
 } from "@/app/components/ui/card";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
+  Tooltip,
+  ResponsiveContainer,
 } from "recharts";
-import {
-  Users,
-  Building2,
-  GraduationCap,
-  CreditCard,
-} from "lucide-react";
-import { supabase } from "@/app/lib/supabaseClient";
 
-type DistribucionPorSede = {
-  sede: string;
-  cantidad: number;
+const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
+
+type Alumno = {
+  id: number;
+  fecha_nacimiento: string | null;
+  fecha_ultimo_examen: string | null;
+  sede_id: number | null;
 };
 
-type IngresoMensual = {
-  mes: string;
-  total: number;
+type Sede = {
+  id: number;
+  nombre: string;
 };
-
-const COLORS = ["#38bdf8", "#22c55e", "#f97316", "#a855f7", "#e11d48"];
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-
   const [totalAlumnos, setTotalAlumnos] = useState(0);
-  const [totalSedes, setTotalSedes] = useState(0);
   const [totalInstructores, setTotalInstructores] = useState(0);
-  const [totalPagos, setTotalPagos] = useState(0);
-
-  const [distribucion, setDistribucion] = useState<DistribucionPorSede[]>([]);
-  const [ingresosMensuales, setIngresosMensuales] = useState<IngresoMensual[]>(
-    []
-  );
+  const [promedioEdad, setPromedioEdad] = useState<number | null>(null);
+  const [examenesPendientes, setExamenesPendientes] = useState(0);
+  const [distribucion, setDistribucion] = useState<
+    { sede: string; cantidad: number }[]
+  >([]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const cargarDatos = async () => {
       try {
         setLoading(true);
 
-        // 🔹 Total alumnos
-        {
-          const { count, error } = await supabase
-            .from("alumnos")
-            .select("id", { count: "exact", head: true });
+        // 🔹 Cargar alumnos
+        const { data: alumnos, error: alumnosError } = await supabase
+          .from("alumnos")
+          .select("id, fecha_nacimiento, fecha_ultimo_examen, sede_id");
+        if (alumnosError) throw alumnosError;
+        setTotalAlumnos(alumnos?.length || 0);
 
-          if (!error && count !== null) setTotalAlumnos(count);
-        }
+        // 🔹 Cargar instructores
+        const { data: instructores, error: instrError } = await supabase
+          .from("instructores")
+          .select("id");
+        if (instrError) throw instrError;
+        setTotalInstructores(instructores?.length || 0);
 
-        // 🔹 Total sedes
-        {
-          const { count, error } = await supabase
-            .from("sedes")
-            .select("id", { count: "exact", head: true });
+        // 🔹 Cargar sedes
+        const { data: sedes, error: sedesError } = await supabase
+          .from("sedes")
+          .select("id, nombre");
+        if (sedesError) throw sedesError;
 
-          if (!error && count !== null) setTotalSedes(count);
-        }
+        // 🔹 Promedio de edad
+        const hoy = new Date();
+        const edades = (alumnos || [])
+          .filter((a) => a.fecha_nacimiento)
+          .map((a) => {
+            const f = new Date(a.fecha_nacimiento as string);
+            let edad = hoy.getFullYear() - f.getFullYear();
+            const m = hoy.getMonth() - f.getMonth();
+            if (m < 0 || (m === 0 && hoy.getDate() < f.getDate())) edad--;
+            return edad;
+          });
 
-        // 🔹 Total instructores
-        {
-          const { count, error } = await supabase
-            .from("instructores")
-            .select("id", { count: "exact", head: true });
+        if (edades.length > 0)
+          setPromedioEdad(
+            Math.round(edades.reduce((a, b) => a + b, 0) / edades.length)
+          );
 
-          if (!error && count !== null) setTotalInstructores(count);
-        }
+        // 🔹 Exámenes pendientes (sin examen o más de 12 meses)
+        const pendientes = (alumnos || []).filter((a) => {
+          if (!a.fecha_ultimo_examen) return true;
+          const f = new Date(a.fecha_ultimo_examen);
+          const diff = (hoy.getTime() - f.getTime()) / (1000 * 60 * 60 * 24);
+          return diff > 365;
+        });
+        setExamenesPendientes(pendientes.length);
 
-        // 🔹 Pagos totales + ingresos mensuales
-        {
-          const { data, error } = await supabase
-            .from("pagos")
-            .select("monto, fecha_pago")
-            .order("fecha_pago", { ascending: true });
+        // 🔹 Distribución por sede
+        const mapa = new Map<string, number>();
+        (alumnos || []).forEach((a) => {
+          const sedeNombre =
+            sedes?.find((s) => s.id === a.sede_id)?.nombre ||
+            "Sin sede";
+          mapa.set(sedeNombre, (mapa.get(sedeNombre) || 0) + 1);
+        });
 
-          if (!error && data) {
-            // Total $
-            const total = data.reduce(
-              (acc, p: any) => acc + (p.monto || 0),
-              0
-            );
-            setTotalPagos(total);
-
-            // Agrupado por mes
-            const porMes: Record<string, number> = {};
-
-            data.forEach((p: any) => {
-              if (!p.fecha_pago) return;
-              const fecha = new Date(p.fecha_pago);
-              if (isNaN(fecha.getTime())) return;
-
-              const key = `${fecha.getFullYear()}-${String(
-                fecha.getMonth() + 1
-              ).padStart(2, "0")}`;
-
-              porMes[key] = (porMes[key] || 0) + (p.monto || 0);
-            });
-
-            const listaMeses: IngresoMensual[] = Object.entries(porMes).map(
-              ([mes, total]) => ({
-                mes,
-                total,
-              })
-            );
-
-            setIngresosMensuales(listaMeses);
-          }
-        }
-
-        // 🔹 Distribución de alumnos por sede
-        {
-          const { data, error } = await supabase
-            .from("alumnos")
-            .select("sede_id, sedes(nombre)")
-            .neq("sede_id", null);
-
-          if (!error && data) {
-            const mapa: Record<string, number> = {};
-
-            (data as any[]).forEach((row) => {
-              const nombreSede =
-                row.sedes?.nombre || "Sin sede asignada";
-              mapa[nombreSede] = (mapa[nombreSede] || 0) + 1;
-            });
-
-            const dist: DistribucionPorSede[] = Object.entries(mapa).map(
-              ([sede, cantidad]) => ({
-                sede,
-                cantidad,
-              })
-            );
-
-            setDistribucion(dist);
-          }
-        }
-      } catch (e) {
-        console.error("Error cargando dashboard:", e);
+        setDistribucion(
+          Array.from(mapa.entries()).map(([sede, cantidad]) => ({
+            sede,
+            cantidad,
+          }))
+        );
+      } catch (err) {
+        console.error("Error cargando dashboard:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    cargarDatos();
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 p-6">
-      {/* Título */}
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold">
-          Panel General ATUCH
-        </h1>
-        <p className="text-slate-400 mt-1">
-          Resumen en tiempo real de tu organización: alumnos,
-          sedes, instructores y pagos.
-        </p>
-      </header>
+    <main className="flex-1 p-8 bg-slate-950 text-slate-50">
+      <section className="max-w-6xl mx-auto space-y-8">
+        <header className="space-y-2">
+          <h1 className="text-3xl font-semibold">
+            Dashboard Taekwon-Do Chile 🇨🇱
+          </h1>
+          <p className="text-slate-400 text-sm">
+            Datos reales desde tu base de Supabase.
+          </p>
+        </header>
 
-      {/* Métricas principales */}
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Alumnos activos
-            </CardTitle>
-            <Users className="w-5 h-5 text-sky-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {loading ? "…" : totalAlumnos}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Total registrados en la base.
-            </p>
-          </CardContent>
-        </Card>
+        {/* Tarjetas */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Total Alumnos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading ? "—" : totalAlumnos}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Sedes
-            </CardTitle>
-            <Building2 className="w-5 h-5 text-emerald-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {loading ? "…" : totalSedes}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Dojangs oficiales registrados.
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Instructores
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading ? "—" : totalInstructores}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Instructores
-            </CardTitle>
-            <GraduationCap className="w-5 h-5 text-violet-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {loading ? "…" : totalInstructores}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Incluye maestros e instructores.
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Promedio Edad
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading || promedioEdad === null
+                  ? "—"
+                  : `${promedioEdad} años`}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">
-              Pagos registrados
-            </CardTitle>
-            <CreditCard className="w-5 h-5 text-pink-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {loading
-                ? "…"
-                : `$${totalPagos.toLocaleString("es-CL")}`}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Suma total histórica en el sistema.
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Exámenes Pendientes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading ? "—" : examenesPendientes}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Gráficos */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-        {/* Distribución alumnos por sede */}
-        <Card className="bg-slate-900 border-slate-800">
+        {/* Gráfico */}
+        <Card className="bg-slate-900 border-slate-800 mt-4">
           <CardHeader>
-            <CardTitle>
-              Distribución de alumnos por sede
-            </CardTitle>
+            <CardTitle>Distribución de alumnos por sede</CardTitle>
           </CardHeader>
           <CardContent className="h-80">
             {loading ? (
@@ -261,8 +196,8 @@ export default function DashboardPage() {
                 Cargando datos…
               </div>
             ) : distribucion.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-slate-500">
-                Aún no hay alumnos asignados a sedes.
+              <div className="flex items-center justify-center h-full text-slate-400">
+                No hay alumnos registrados.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -275,28 +210,19 @@ export default function DashboardPage() {
                     cy="50%"
                     outerRadius={110}
                     labelLine={false}
-                    // 👇 Usamos props genéricos para evitar errores de tipo
                     label={(props: any) =>
-                      `${props.name} ${(
-                        (props.percent || 0) * 100
-                      ).toFixed(0)}%`
+                      `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`
                     }
                   >
                     {distribucion.map((entry, index) => (
                       <Cell
                         key={entry.sede}
-                        fill={
-                          COLORS[index % COLORS.length]
-                        }
+                        fill={COLORS[index % COLORS.length]}
                       />
                     ))}
                   </Pie>
-                  <RechartsTooltip
-                    formatter={(
-                      value: any,
-                      _name: any,
-                      props: any
-                    ) => [
+                  <Tooltip
+                    formatter={(value: any, _name: any, props: any) => [
                       `${value} alumnos`,
                       props.payload.sede,
                     ]}
@@ -305,64 +231,8 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             )}
           </CardContent>
-          {!loading && (
-            <p className="px-6 pb-4 text-xs text-slate-500">
-              * Basado en los alumnos registrados con
-              sede en Supabase.
-            </p>
-          )}
-        </Card>
-
-        {/* Ingresos mensuales */}
-        <Card className="bg-slate-900 border-slate-800">
-          <CardHeader>
-            <CardTitle>
-              Ingresos mensuales (histórico)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="h-80">
-            {loading ? (
-              <div className="flex items-center justify-center h-full text-slate-400">
-                Cargando datos…
-              </div>
-            ) : ingresosMensuales.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-slate-500">
-                Aún no hay pagos registrados.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ingresosMensuales}>
-                  <XAxis
-                    dataKey="mes"
-                    tick={{ fill: "#9ca3af", fontSize: 10 }}
-                  />
-                  <YAxis
-                    tick={{ fill: "#9ca3af", fontSize: 10 }}
-                  />
-                  <RechartsTooltip
-                    formatter={(value: any) =>
-                      `$${Number(
-                        value
-                      ).toLocaleString("es-CL")}`
-                    }
-                  />
-                  <Bar
-                    dataKey="total"
-                    radius={[4, 4, 0, 0]}
-                    fill="#38bdf8"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-          {!loading && (
-            <p className="px-6 pb-4 text-xs text-slate-500">
-              * Montos calculados desde la tabla
-              "pagos".
-            </p>
-          )}
         </Card>
       </section>
-    </div>
+    </main>
   );
 }
