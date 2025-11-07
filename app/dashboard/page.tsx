@@ -18,24 +18,27 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#A020F0"];
+// Colores del gráfico
+const COLORS = ["#00B8FF", "#00C49F", "#FFBB28", "#FF8042", "#FF4C4C"];
 
-type Alumno = {
+// Tipos
+type AlumnoDB = {
   id: number;
   fecha_nacimiento: string | null;
+  fecha_ultimo_examen: string | null;
   sede_id: number | null;
 };
 
-type Sede = {
+type SedeDB = {
   id: number;
   nombre: string;
 };
 
-type Instructor = {
+type InstructorDB = {
   id: number;
 };
 
-type DistribucionSede = {
+type DistribucionItem = {
   sede: string;
   cantidad: number;
 };
@@ -45,171 +48,208 @@ export default function DashboardPage() {
 
   const [totalAlumnos, setTotalAlumnos] = useState(0);
   const [totalInstructores, setTotalInstructores] = useState(0);
-  const [promedioEdad, setPromedioEdad] = useState<number | null>(null);
-  const [examenesPendientes, setExamenesPendientes] = useState<number | null>(
-    null
-  ); // si luego tienes esa info, la calculamos
-
-  const [distribucion, setDistribucion] = useState<DistribucionSede[]>([]);
+  const [promedioEdad, setPromedioEdad] = useState(0);
+  const [examenesPendientes, setExamenesPendientes] = useState(0);
+  const [distribucion, setDistribucion] = useState<DistribucionItem[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      try {
+        // 1) Alumnos
+        const { data: alumnosData, error: alumnosError } = await supabase
+          .from("alumnos")
+          .select(
+            "id, fecha_nacimiento, fecha_ultimo_examen, sede_id"
+          );
 
-      // 1) Traer alumnos
-      const { data: alumnos, error: alumnosError } = await supabase
-        .from("alumnos")
-        .select("id, fecha_nacimiento, sede_id");
-
-      if (alumnosError) {
-        console.error("Error cargando alumnos:", alumnosError);
-      }
-
-      // 2) Traer instructores
-      const { data: instructores, error: instructoresError } = await supabase
-        .from("instructores")
-        .select("id");
-
-      if (instructoresError) {
-        console.error("Error cargando instructores:", instructoresError);
-      }
-
-      // 3) Traer sedes
-      const { data: sedes, error: sedesError } = await supabase
-        .from("sedes")
-        .select("id, nombre");
-
-      if (sedesError) {
-        console.error("Error cargando sedes:", sedesError);
-      }
-
-      // --- Calcular métricas solo si tenemos datos ---
-      const alumnosList: Alumno[] = alumnos || [];
-      const instructoresList: Instructor[] = instructores || [];
-      const sedesList: Sede[] = sedes || [];
-
-      // Total alumnos
-      setTotalAlumnos(alumnosList.length);
-
-      // Total instructores
-      setTotalInstructores(instructoresList.length);
-
-      // Promedio edad (en años) basado en fecha_nacimiento
-      if (alumnosList.length > 0) {
-        const hoy = new Date();
-        const edades = alumnosList
-          .map((a) => {
-            if (!a.fecha_nacimiento) return null;
-            const fn = new Date(a.fecha_nacimiento);
-            if (isNaN(fn.getTime())) return null;
-            let edad = hoy.getFullYear() - fn.getFullYear();
-            const m = hoy.getMonth() - fn.getMonth();
-            if (m < 0 || (m === 0 && hoy.getDate() < fn.getDate())) {
-              edad--;
-            }
-            return edad;
-          })
-          .filter((e): e is number => e !== null);
-
-        if (edades.length > 0) {
-          const suma = edades.reduce((acc, e) => acc + e, 0);
-          setPromedioEdad(Math.round(suma / edades.length));
-        } else {
-          setPromedioEdad(null);
+        if (alumnosError) {
+          console.error("Error cargando alumnos:", alumnosError.message);
         }
-      } else {
-        setPromedioEdad(null);
+
+        const alumnos = (alumnosData || []) as AlumnoDB[];
+        setTotalAlumnos(alumnos.length);
+
+        // 2) Instructores
+        const { data: instructoresData, error: instructoresError } =
+          await supabase.from("instructores").select("id");
+
+        if (instructoresError) {
+          console.error(
+            "Error cargando instructores:",
+            instructoresError.message
+          );
+        }
+
+        const instructores = (instructoresData || []) as InstructorDB[];
+        setTotalInstructores(instructores.length);
+
+        // 3) Sedes
+        const { data: sedesData, error: sedesError } = await supabase
+          .from("sedes")
+          .select("id, nombre");
+
+        if (sedesError) {
+          console.error("Error cargando sedes:", sedesError.message);
+        }
+
+        const sedes = (sedesData || []) as SedeDB[];
+
+        // 4) Promedio de edad (solo alumnos con fecha_nacimiento)
+        if (alumnos.length > 0) {
+          const hoy = new Date();
+          const edades = alumnos
+            .filter((a) => a.fecha_nacimiento)
+            .map((a) => {
+              const fn = new Date(a.fecha_nacimiento as string);
+              let edad =
+                hoy.getFullYear() - fn.getFullYear();
+              const m = hoy.getMonth() - fn.getMonth();
+              if (
+                m < 0 ||
+                (m === 0 && hoy.getDate() < fn.getDate())
+              ) {
+                edad--;
+              }
+              return edad;
+            });
+
+          if (edades.length > 0) {
+            const promedio =
+              edades.reduce((acc, e) => acc + e, 0) /
+              edades.length;
+            setPromedioEdad(Math.round(promedio));
+          } else {
+            setPromedioEdad(0);
+          }
+        } else {
+          setPromedioEdad(0);
+        }
+
+        // 5) Exámenes pendientes
+        // Regla simple:
+        // - Sin fecha_ultimo_examen => pendiente
+        // - Último examen hace más de 12 meses => pendiente
+        const hoy = new Date();
+        const pendientes = alumnos.filter((a) => {
+          if (!a.fecha_ultimo_examen) return true;
+          const fe = new Date(a.fecha_ultimo_examen);
+          const diffMs = hoy.getTime() - fe.getTime();
+          const diffDias = diffMs / (1000 * 60 * 60 * 24);
+          return diffDias > 365;
+        }).length;
+
+        setExamenesPendientes(pendientes);
+
+        // 6) Distribución por sede
+        if (sedes.length > 0 && alumnos.length > 0) {
+          const mapaSedes = new Map<number, string>();
+          sedes.forEach((s) => mapaSedes.set(s.id, s.nombre));
+
+          const conteo = new Map<string, number>();
+
+          alumnos.forEach((a) => {
+            if (!a.sede_id) return;
+            const nombreSede = mapaSedes.get(a.sede_id);
+            if (!nombreSede) return;
+            conteo.set(
+              nombreSede,
+              (conteo.get(nombreSede) || 0) + 1
+            );
+          });
+
+          const dist: DistribucionItem[] = Array.from(
+            conteo.entries()
+          ).map(([sede, cantidad]) => ({ sede, cantidad }));
+
+          setDistribucion(dist);
+        } else {
+          setDistribucion([]);
+        }
+      } catch (err) {
+        console.error("Error general en dashboard:", err);
+      } finally {
+        setLoading(false);
       }
-
-      // Exámenes pendientes (POR AHORA: null o 0 hasta que exista lógica real)
-      setExamenesPendientes(null); // o 0 si prefieres mostrar algo
-
-      // Distribución por sede (usando sede_id de alumnos)
-      const conteoPorSede: Record<number, number> = {};
-
-      alumnosList.forEach((a) => {
-        if (!a.sede_id) return;
-        conteoPorSede[a.sede_id] = (conteoPorSede[a.sede_id] || 0) + 1;
-      });
-
-      const distribucionReal: DistribucionSede[] = Object.entries(
-        conteoPorSede
-      ).map(([sedeId, cantidad]) => {
-        const sede = sedesList.find((s) => s.id === Number(sedeId));
-        return {
-          sede: sede ? sede.nombre : `Sede ${sedeId}`,
-          cantidad,
-        };
-      });
-
-      setDistribucion(distribucionReal);
-      setLoading(false);
     };
 
     fetchData();
   }, []);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white px-8 py-10">
+    <main className="flex-1 p-8 bg-slate-950 text-slate-50">
       <section className="max-w-6xl mx-auto space-y-8">
-        <h1 className="text-3xl font-semibold text-center mb-2">
-          Dashboard Taekwon-Do Chile 🇨🇱
-        </h1>
-        <p className="text-slate-400 text-center mb-8">
-          Métricas en base a los datos reales de tu sistema (Supabase).
-        </p>
+        <header className="space-y-2">
+          <h1 className="text-3xl font-semibold">
+            Dashboard Taekwon-Do Chile 🇨🇱
+          </h1>
+          <p className="text-slate-400 text-sm">
+            Datos en tiempo real desde tu base de Supabase.
+          </p>
+        </header>
 
         {/* Tarjetas resumen */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle>Total Alumnos</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Total Alumnos
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-3xl font-bold">
-              {loading ? "…" : totalAlumnos}
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading ? "—" : totalAlumnos}
+              </p>
             </CardContent>
           </Card>
 
           <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle>Instructores</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Instructores
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-3xl font-bold">
-              {loading ? "…" : totalInstructores}
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading ? "—" : totalInstructores}
+              </p>
             </CardContent>
           </Card>
 
           <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle>Promedio Edad</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Promedio Edad
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-3xl font-bold">
-              {loading
-                ? "…"
-                : promedioEdad !== null
-                ? `${promedioEdad} años`
-                : "Sin datos"}
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading || !promedioEdad
+                  ? "—"
+                  : `${promedioEdad} años`}
+              </p>
             </CardContent>
           </Card>
 
           <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle>Exámenes Pendientes</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-slate-400">
+                Exámenes Pendientes
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-3xl font-bold">
-              {loading
-                ? "…"
-                : examenesPendientes !== null
-                ? examenesPendientes
-                : "—"}
+            <CardContent>
+              <p className="text-3xl font-semibold">
+                {loading ? "—" : examenesPendientes}
+              </p>
             </CardContent>
           </Card>
         </div>
 
         {/* Gráfico de distribución */}
-        <Card className="bg-slate-900 border-slate-800 mt-8">
+        <Card className="bg-slate-900 border-slate-800 mt-4">
           <CardHeader>
-            <CardTitle>Distribución de alumnos por sede</CardTitle>
+            <CardTitle>
+              Distribución de alumnos por sede
+            </CardTitle>
           </CardHeader>
           <CardContent className="h-80">
             {loading ? (
@@ -221,7 +261,10 @@ export default function DashboardPage() {
                 Aún no hay alumnos registrados con sede.
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
                 <PieChart>
                   <Pie
                     data={distribucion}
@@ -229,21 +272,39 @@ export default function DashboardPage() {
                     nameKey="sede"
                     cx="50%"
                     cy="50%"
-                    outerRadius={100}
+                    outerRadius={110}
                     labelLine={false}
-                    label={({ sede, percent }) =>
-                      `${sede} ${(percent * 100).toFixed(0)}%`
+                    label={({
+                      sede,
+                      percent,
+                    }: {
+                      sede: string;
+                      percent: number;
+                    }) =>
+                      `${sede} ${(
+                        (percent || 0) * 100
+                      ).toFixed(0)}%`
                     }
                   >
-                    {distribucion.map((entry, index) => (
-                      <Cell
-                        key={entry.sede}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
+                    {distribucion.map(
+                      (entry, index) => (
+                        <Cell
+                          key={entry.sede}
+                          fill={
+                            COLORS[
+                              index % COLORS.length
+                            ]
+                          }
+                        />
+                      )
+                    )}
                   </Pie>
                   <Tooltip
-                    formatter={(value: any, _name: any, props: any) => [
+                    formatter={(
+                      value: any,
+                      _name: any,
+                      props: any
+                    ) => [
                       `${value} alumnos`,
                       props.payload.sede,
                     ]}
@@ -252,6 +313,12 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             )}
           </CardContent>
+          {!loading && (
+            <p className="px-6 pb-4 text-xs text-slate-500">
+              * Los valores se calculan en base a los
+              alumnos registrados en Supabase.
+            </p>
+          )}
         </Card>
       </section>
     </main>
