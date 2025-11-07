@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+// Colores del gráfico
 const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
 
 type Alumno = {
@@ -45,69 +46,82 @@ export default function DashboardPage() {
       try {
         setLoading(true);
 
-        // 🔹 Cargar alumnos
+        // 🔹 Alumnos
         const { data: alumnos, error: alumnosError } = await supabase
           .from("alumnos")
           .select("id, fecha_nacimiento, fecha_ultimo_examen, sede_id");
         if (alumnosError) throw alumnosError;
+
         setTotalAlumnos(alumnos?.length || 0);
 
-        // 🔹 Cargar instructores
+        // 🔹 Instructores
         const { data: instructores, error: instrError } = await supabase
           .from("instructores")
           .select("id");
         if (instrError) throw instrError;
+
         setTotalInstructores(instructores?.length || 0);
 
-        // 🔹 Cargar sedes
+        // 🔹 Sedes
         const { data: sedes, error: sedesError } = await supabase
           .from("sedes")
           .select("id, nombre");
         if (sedesError) throw sedesError;
 
-        // 🔹 Promedio de edad
         const hoy = new Date();
-        const edades = (alumnos || [])
-          .filter((a) => a.fecha_nacimiento)
-          .map((a) => {
-            const f = new Date(a.fecha_nacimiento as string);
-            let edad = hoy.getFullYear() - f.getFullYear();
-            const m = hoy.getMonth() - f.getMonth();
-            if (m < 0 || (m === 0 && hoy.getDate() < f.getDate())) edad--;
-            return edad;
-          });
 
-        if (edades.length > 0)
-          setPromedioEdad(
-            Math.round(edades.reduce((a, b) => a + b, 0) / edades.length)
-          );
+        // 🔹 Promedio edad
+        const edades =
+          alumnos
+            ?.filter((a) => a.fecha_nacimiento)
+            .map((a) => {
+              const f = new Date(a.fecha_nacimiento as string);
+              let edad = hoy.getFullYear() - f.getFullYear();
+              const m = hoy.getMonth() - f.getMonth();
+              if (m < 0 || (m === 0 && hoy.getDate() < f.getDate())) edad--;
+              return edad;
+            }) || [];
 
-        // 🔹 Exámenes pendientes (sin examen o más de 12 meses)
-        const pendientes = (alumnos || []).filter((a) => {
-          if (!a.fecha_ultimo_examen) return true;
-          const f = new Date(a.fecha_ultimo_examen);
-          const diff = (hoy.getTime() - f.getTime()) / (1000 * 60 * 60 * 24);
-          return diff > 365;
-        });
+        if (edades.length > 0) {
+          const promedio =
+            edades.reduce((sum, e) => sum + e, 0) / edades.length;
+          setPromedioEdad(Math.round(promedio));
+        } else {
+          setPromedioEdad(null);
+        }
+
+        // 🔹 Exámenes pendientes:
+        // sin fecha_ultimo_examen o más de 12 meses
+        const pendientes =
+          alumnos?.filter((a) => {
+            if (!a.fecha_ultimo_examen) return true;
+            const f = new Date(a.fecha_ultimo_examen);
+            const diffDias =
+              (hoy.getTime() - f.getTime()) / (1000 * 60 * 60 * 24);
+            return diffDias > 365;
+          }) || [];
+
         setExamenesPendientes(pendientes.length);
 
         // 🔹 Distribución por sede
-        const mapa = new Map<string, number>();
+        const conteo = new Map<string, number>();
+
         (alumnos || []).forEach((a) => {
           const sedeNombre =
-            sedes?.find((s) => s.id === a.sede_id)?.nombre ||
-            "Sin sede";
-          mapa.set(sedeNombre, (mapa.get(sedeNombre) || 0) + 1);
+            sedes?.find((s) => s.id === a.sede_id)?.nombre || "Sin sede";
+          conteo.set(sedeNombre, (conteo.get(sedeNombre) || 0) + 1);
         });
 
-        setDistribucion(
-          Array.from(mapa.entries()).map(([sede, cantidad]) => ({
+        const dataDistribucion = Array.from(conteo.entries()).map(
+          ([sede, cantidad]) => ({
             sede,
             cantidad,
-          }))
+          })
         );
-      } catch (err) {
-        console.error("Error cargando dashboard:", err);
+
+        setDistribucion(dataDistribucion);
+      } catch (error) {
+        console.error("Error cargando datos del dashboard:", error);
       } finally {
         setLoading(false);
       }
@@ -124,11 +138,11 @@ export default function DashboardPage() {
             Dashboard Taekwon-Do Chile 🇨🇱
           </h1>
           <p className="text-slate-400 text-sm">
-            Datos reales desde tu base de Supabase.
+            Mostrando información en base a los datos reales registrados.
           </p>
         </header>
 
-        {/* Tarjetas */}
+        {/* Tarjetas de métricas */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader className="pb-2">
@@ -185,7 +199,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Gráfico */}
+        {/* Gráfico de distribución por sede */}
         <Card className="bg-slate-900 border-slate-800 mt-4">
           <CardHeader>
             <CardTitle>Distribución de alumnos por sede</CardTitle>
@@ -211,7 +225,9 @@ export default function DashboardPage() {
                     outerRadius={110}
                     labelLine={false}
                     label={(props: any) =>
-                      `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`
+                      `${props.name} ${((props.percent || 0) * 100).toFixed(
+                        0
+                      )}%`
                     }
                   >
                     {distribucion.map((entry, index) => (
