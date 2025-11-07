@@ -4,38 +4,36 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/app/lib/supabaseClient";
 
 type Sede = { id: number; nombre: string };
-type Instructor = { id: number; nombre: string; apellido: string; grado: string };
+type InstructorVista = { sede_id: number; instructor_id: number; nombre_completo: string; grado: string };
 
 export default function AlumnosPage() {
   const [sedes, setSedes] = useState<Sede[]>([]);
-  const [instructores, setInstructores] = useState<Instructor[]>([]);
+  const [instructores, setInstructores] = useState<InstructorVista[]>([]);
   const [sedeId, setSedeId] = useState<number | null>(null);
   const [instructorId, setInstructorId] = useState<number | null>(null);
   const [loadingSedes, setLoadingSedes] = useState(false);
   const [loadingInstructores, setLoadingInstructores] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // 1) Cargar sedes al entrar
+  // 1️⃣ Cargar sedes
   useEffect(() => {
     (async () => {
-      setLastError(null);
       setLoadingSedes(true);
       const { data, error } = await supabase
         .from("sedes")
         .select("id, nombre")
         .order("nombre", { ascending: true });
-
       if (error) {
-        setLastError(`Error cargando sedes: ${error.message}`);
-        setSedes([]);
+        console.error(error);
+        setLastError(error.message);
       } else {
-        setSedes((data ?? []) as Sede[]);
+        setSedes(data || []);
       }
       setLoadingSedes(false);
     })();
   }, []);
 
-  // 2) Cuando cambia la sede, cargar instructores de esa sede
+  // 2️⃣ Cargar instructores de la vista pública
   useEffect(() => {
     if (!sedeId) {
       setInstructores([]);
@@ -44,56 +42,20 @@ export default function AlumnosPage() {
     }
 
     (async () => {
-      setLastError(null);
       setLoadingInstructores(true);
-
-      // IMPORTANTE:
-      // Esta consulta usa la relación FK: instructores_sedes.instructor_id -> instructores.id
-      // Si en Supabase ves el ícono de "eslabón" en esas columnas (como en tu captura), la relación está lista.
-      // Usamos un join implícito con el nombre de la tabla relacionada.
       const { data, error } = await supabase
-        .from("instructores_sedes")
-        .select(
-          `
-          instructor_id,
-          instructores (
-            id,
-            nombre,
-            apellido,
-            grado
-          )
-        `
-        )
+        .from("v_instructores_por_sede")
+        .select("sede_id, instructor_id, nombre_completo, grado")
         .eq("sede_id", sedeId)
-        .order("instructor_id", { ascending: true });
+        .order("nombre_completo", { ascending: true });
 
       if (error) {
-        setLastError(`Error cargando instructores: ${error.message}`);
+        console.error("Error cargando instructores:", error);
+        setLastError(error.message);
         setInstructores([]);
       } else {
-        // Normalizamos a nuestro tipo Instructor[]
-        const items =
-          (data ?? [])
-            .map((row: any) =>
-              row?.instructores
-                ? {
-                    id: row.instructores.id,
-                    nombre: row.instructores.nombre,
-                    apellido: row.instructores.apellido,
-                    grado: row.instructores.grado,
-                  }
-                : null
-            )
-            .filter(Boolean) as Instructor[];
-
-        // Ordenamos por nombre completo
-        items.sort((a, b) =>
-          `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`, "es")
-        );
-
-        setInstructores(items);
+        setInstructores(data || []);
       }
-
       setLoadingInstructores(false);
     })();
   }, [sedeId]);
@@ -103,14 +65,13 @@ export default function AlumnosPage() {
       <h1 className="text-3xl font-semibold text-white mb-8">Registro de Alumnos</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Combo Sede */}
+        {/* SEDE */}
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
           <label className="block text-sm text-white/80 mb-2">Sede</label>
           <select
             className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
             value={sedeId ?? ""}
             onChange={(e) => setSedeId(e.target.value ? Number(e.target.value) : null)}
-            disabled={loadingSedes}
           >
             <option value="" className="text-black">
               {loadingSedes ? "Cargando sedes..." : "Seleccione una sede..."}
@@ -121,12 +82,9 @@ export default function AlumnosPage() {
               </option>
             ))}
           </select>
-          <p className="text-xs text-white/60 mt-2">
-            {sedeId ? `Sede seleccionada: ${sedes.find(s => s.id === sedeId)?.nombre ?? "—"}` : "Seleccione una sede para continuar."}
-          </p>
         </div>
 
-        {/* Combo Instructor */}
+        {/* INSTRUCTOR */}
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
           <label className="block text-sm text-white/80 mb-2">Instructor</label>
           <select
@@ -146,26 +104,15 @@ export default function AlumnosPage() {
             </option>
 
             {instructores.map((i) => (
-              <option key={i.id} value={i.id} className="text-black">
-                {`${i.nombre} ${i.apellido}`} {i.grado ? `— ${i.grado}` : ""}
+              <option key={i.instructor_id} value={i.instructor_id} className="text-black">
+                {`${i.nombre_completo}`} {i.grado ? `— ${i.grado}` : ""}
               </option>
             ))}
           </select>
-          <p className="text-xs text-white/60 mt-2">
-            {instructorId
-              ? `Instructor: ${
-                  instructores.find((i) => i.id === instructorId)
-                    ? `${instructores.find((i) => i.id === instructorId)!.nombre} ${
-                        instructores.find((i) => i.id === instructorId)!.apellido
-                      }`
-                    : "—"
-                }`
-              : "Primero selecciona una sede."}
-          </p>
         </div>
       </div>
 
-      {/* Bloque de ayuda / debug */}
+      {/* DEBUG */}
       <div className="mt-6 rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-yellow-100 text-sm">
         <div className="font-semibold mb-1">Estado</div>
         <ul className="list-disc ml-5 space-y-1">
