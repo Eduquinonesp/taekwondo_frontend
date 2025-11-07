@@ -1,147 +1,231 @@
 "use client";
-export const dynamic = "force-dynamic";
 
-import React, { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { useEffect, useState } from "react";
+import { supabase } from "@/app/lib/supabaseClient";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/app/components/ui/card";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
-interface Alumno {
-  id: number;
-  nombre: string;
-  edad: number;
-  sede: string | null;
-  instructor: string | null;
-}
+// Colores para el gráfico
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
+
+type DistribucionSede = {
+  sede: string;
+  cantidad: number;
+};
 
 export default function DashboardPage() {
-  const [alumnos, setAlumnos] = useState<Alumno[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [totalAlumnos, setTotalAlumnos] = useState<number>(0);
+  const [totalInstructores, setTotalInstructores] = useState<number>(0);
+  const [promedioEdad, setPromedioEdad] = useState<number>(0);
+  const [distribucion, setDistribucion] = useState<DistribucionSede[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 🎯 Colores para los gráficos
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"];
-
-  // 🧩 Cargar datos desde Supabase
   useEffect(() => {
-    const fetchAlumnos = async () => {
+    (async () => {
       try {
-        const { data, error } = await supabase
-          .from("alumnos")
-          .select("id, nombre, edad, sede, instructor");
+        setLoading(true);
+        setError(null);
 
-        if (error) throw error;
-        setAlumnos(data || []);
-      } catch (err) {
-        console.error("❌ Error al cargar alumnos:", err);
+        // 1) Traer alumnos con su sede
+        const { data: alumnos, error: alumnosError } = await supabase
+          .from("alumnos")
+          .select("id, fecha_nacimiento, sede_id, sedes(nombre)")
+          .order("id", { ascending: true });
+
+        if (alumnosError) throw alumnosError;
+
+        // 2) Contar instructores
+        const { count: countInstructores, error: instError } = await supabase
+          .from("instructores")
+          .select("id", { count: "exact", head: true });
+
+        if (instError) throw instError;
+
+        // Total alumnos
+        const totalA = alumnos?.length ?? 0;
+        setTotalAlumnos(totalA);
+
+        // Total instructores
+        setTotalInstructores(countInstructores ?? 0);
+
+        // Promedio de edad (en años)
+        if (alumnos && alumnos.length > 0) {
+          const hoy = new Date();
+          const sumEdades = alumnos.reduce((suma: number, a: any) => {
+            if (!a.fecha_nacimiento) return suma;
+            const fn = new Date(a.fecha_nacimiento);
+            let edad =
+              hoy.getFullYear() - fn.getFullYear();
+            const m = hoy.getMonth() - fn.getMonth();
+            if (m < 0 || (m === 0 && hoy.getDate() < fn.getDate())) {
+              edad--;
+            }
+            return suma + edad;
+          }, 0);
+
+          const promedio = Math.round(sumEdades / alumnos.length);
+          setPromedioEdad(promedio);
+        } else {
+          setPromedioEdad(0);
+        }
+
+        // Distribución por sede
+        const conteo: Record<string, number> = {};
+        if (alumnos) {
+          alumnos.forEach((a: any) => {
+            const sedeNombre =
+              (a.sedes && a.sedes.nombre) || "Sin sede";
+            conteo[sedeNombre] = (conteo[sedeNombre] || 0) + 1;
+          });
+        }
+
+        const distribucionData = Object.entries(conteo).map(
+          ([sede, cantidad]) => ({ sede, cantidad })
+        );
+
+        setDistribucion(distribucionData);
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message ?? "Error al cargar datos del dashboard.");
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchAlumnos();
+    })();
   }, []);
 
-  // 📊 Agrupar por sede para el gráfico
-  const alumnosPorSede = Object.values(
-    alumnos.reduce((acc: Record<string, any>, alumno) => {
-      const sede = alumno.sede || "Sin sede";
-      if (!acc[sede]) acc[sede] = { name: sede, value: 0 };
-      acc[sede].value += 1;
-      return acc;
-    }, {})
-  );
-
-  // 🧮 Total de alumnos
-  const totalAlumnos = alumnos.length;
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen text-gray-400">
-        Cargando información...
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6 space-y-8">
-      <h1 className="text-3xl font-bold text-center mb-6 text-white">
-        Panel de Control - Taekwon-Do Universal Chile
+    <main className="flex-1 p-8 bg-gradient-to-b from-slate-950 to-slate-900 text-slate-50">
+      <h1 className="text-3xl font-bold mb-2 text-center">
+        Dashboard Taekwon-Do Chile 🇨🇱
       </h1>
+      <p className="text-slate-400 text-center mb-8">
+        Visualiza los datos reales de tus alumnos, instructores y sedes.
+      </p>
 
-      {/* Tarjetas con métricas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl">
+      {error && (
+        <div className="mb-4 rounded-xl bg-red-900/40 border border-red-500 px-4 py-2 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Tarjetas resumen */}
+      <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
+        <Card className="bg-slate-900/80 border-slate-700">
           <CardHeader>
-            <CardTitle className="text-gray-100">Total de alumnos</CardTitle>
+            <CardTitle className="text-sm text-slate-400">
+              Total Alumnos
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-green-400">{totalAlumnos}</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-gray-100">Sedes activas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-4xl font-bold text-blue-400">
-              {alumnosPorSede.length}
+            <p className="text-3xl font-semibold">
+              {loading ? "…" : totalAlumnos}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl">
+        <Card className="bg-slate-900/80 border-slate-700">
           <CardHeader>
-            <CardTitle className="text-gray-100">Promedio de edad</CardTitle>
+            <CardTitle className="text-sm text-slate-400">
+              Instructores
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-4xl font-bold text-yellow-400">
-              {alumnos.length > 0
-                ? Math.round(
-                    alumnos.reduce((acc, a) => acc + a.edad, 0) / alumnos.length
-                  )
-                : 0}
+            <p className="text-3xl font-semibold">
+              {loading ? "…" : totalInstructores}
             </p>
           </CardContent>
         </Card>
-      </div>
 
-      {/* 📊 Gráfico */}
-      <Card className="bg-gray-900 border border-gray-700 shadow-lg rounded-2xl mt-8">
-        <CardHeader>
-          <CardTitle className="text-gray-100">Distribución por Sede</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {alumnosPorSede.length > 0 ? (
-            <ResponsiveContainer width="100%" height={400}>
+        <Card className="bg-slate-900/80 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-sm text-slate-400">
+              Promedio Edad
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">
+              {loading ? "…" : `${promedioEdad} años`}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900/80 border-slate-700">
+          <CardHeader>
+            <CardTitle className="text-sm text-slate-400">
+              Exámenes Pendientes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">
+              {loading ? "…" : 0}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-1">
+              (Por ahora fijo; luego lo conectamos a tu lógica de exámenes.)
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Gráfico de distribución */}
+      <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6">
+        <h2 className="text-lg font-semibold mb-4">
+          Distribución de alumnos por sede
+        </h2>
+
+        {loading ? (
+          <p className="text-slate-400 text-sm">Cargando datos…</p>
+        ) : distribucion.length === 0 ? (
+          <p className="text-slate-500 text-sm">
+            Aún no hay alumnos registrados en el sistema.
+          </p>
+        ) : (
+          <div className="w-full h-80">
+            <ResponsiveContainer>
               <PieChart>
                 <Pie
-                  data={alumnosPorSede}
-                  dataKey="value"
-                  nameKey="name"
+                  data={distribucion}
+                  dataKey="cantidad"
+                  nameKey="sede"
                   cx="50%"
                   cy="50%"
-                  outerRadius={130}
-                  label
+                  outerRadius={110}
+                  labelLine={false}
+                  label={(entry) =>
+                    `${entry.sede} (${entry.cantidad})`
+                  }
                 >
-                  {alumnosPorSede.map((_, index) => (
+                  {distribucion.map((entry, index) => (
                     <Cell
-                      key={`cell-${index}`}
+                      key={entry.sede}
                       fill={COLORS[index % COLORS.length]}
                     />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  formatter={(value, _name, props) => [
+                    `${value} alumnos`,
+                    props?.payload?.sede,
+                  ]}
+                />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-          ) : (
-            <p className="text-center text-gray-400 py-8">
-              No hay datos disponibles para mostrar.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+        )}
+      </section>
+    </main>
   );
 }
