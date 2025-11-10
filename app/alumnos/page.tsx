@@ -1,182 +1,377 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/app/lib/supabaseClient";
+import React, { useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
+import { Loader2, PlusCircle } from "lucide-react";
 
-// ===== Tipos =====
-type Sede = { id: number; nombre: string };
-type InstructorVista = {
-  sede_id: number;
-  instructor_id: number;
-  nombre_completo: string;
-  grado: string | null;
+type Sede = {
+  id: number;
+  nombre: string;
 };
 
-// ===== Utilidades =====
-function calcEdad(fechaISO: string | null): number | null {
-  if (!fechaISO) return null;
-  const hoy = new Date();
-  const f = new Date(fechaISO);
-  let edad = hoy.getFullYear() - f.getFullYear();
-  const m = hoy.getMonth() - f.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < f.getDate())) edad--;
-  return edad;
-}
+type Instructor = {
+  id: number;
+  nombres: string;
+  apellidos: string;
+};
 
-// Lista corta de grados (ajústala si quieres más)
-const GRADOS = [
-  "10º Kup (Blanco)",
-  "9º Kup (Blanco Punta Amarilla)",
-  "8º Kup (Amarillo)",
-  "7º Kup (Amarillo Punta Verde)",
-  "6º Kup (Verde)",
-  "5º Kup (Verde Punta Azul)",
-  "4º Kup (Azul)",
-  "3º Kup (Azul Punta Roja)",
-  "2º Kup (Rojo)",
-  "1º Kup (Rojo Punta Negra)",
-  "I Dan",
-  "II Dan",
-  "III Dan",
-  "IV Dan",
-  "V Dan",
-];
+type Alumno = {
+  id: number;
+  nombres: string;
+  apellidos: string;
+  rut: string;
+  fecha_nacimiento: string | null;
+  edad: number | null;
+  telefono: string | null;
+  email: string | null;
+  direccion: string | null;
+  grado: string | null;
+  fecha_ultimo_examen: string | null;
+  sede_id: number | null;
+  instructor_id: number | null;
+  activo: boolean;
+  sedes?: { nombre: string } | null;
+  instructores?: { nombres: string; apellidos: string } | null;
+};
 
 export default function AlumnosPage() {
-  // --- combos ---
-  const [sedes, setSedes] = useState<Sede[]>([]);
-  const [instructores, setInstructores] = useState<InstructorVista[]>([]);
-  const [sedeId, setSedeId] = useState<number | null>(null);
-  const [instructorId, setInstructorId] = useState<number | null>(null);
-
-  const [loadingSedes, setLoadingSedes] = useState(false);
-  const [loadingInstructores, setLoadingInstructores] = useState(false);
-
-  // --- formulario alumno ---
-  const [nombres, setNombres] = useState("");
-  const [apellidos, setApellidos] = useState("");
-  const [rut, setRut] = useState(""); // obligatorio por tu esquema
-  const [fechaNacimiento, setFechaNacimiento] = useState<string>("");
-  const edad = useMemo(() => calcEdad(fechaNacimiento || null), [fechaNacimiento]);
-
-  const [telefono, setTelefono] = useState("");
-  const [email, setEmail] = useState("");
-  const [direccion, setDireccion] = useState("");
-  const [grado, setGrado] = useState("I Dan"); // por defecto
-
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [lastError, setLastError] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [alumnos, setAlumnos] = useState<Alumno[]>([]);
+  const [sedes, setSedes] = useState<Sede[]>([]);
+  const [instructores, setInstructores] = useState<Instructor[]>([]);
+  const [sedeSeleccionada, setSedeSeleccionada] = useState<number | "">("");
+  const [instructorSeleccionado, setInstructorSeleccionado] = useState<number | "">("");
 
-  // 1) Cargar sedes
+  const [nuevoAlumno, setNuevoAlumno] = useState({
+    nombres: "",
+    apellidos: "",
+    rut: "",
+    fecha_nacimiento: "",
+    telefono: "",
+    email: "",
+    direccion: "",
+    grado: "",
+    fecha_ultimo_examen: "",
+    sede_id: "",
+    instructor_id: "",
+    activo: true,
+  });
+
+  // Cargar sedes, instructores y alumnos
   useEffect(() => {
-    (async () => {
-      setLoadingSedes(true);
-      const { data, error } = await supabase
+    const loadData = async () => {
+      setLoading(true);
+
+      const { data: sedesData } = await supabase
         .from("sedes")
         .select("id, nombre")
         .order("nombre", { ascending: true });
 
-      if (error) setLastError(error.message);
-      setSedes(data || []);
-      setLoadingSedes(false);
-    })();
+      const { data: instructoresData } = await supabase
+        .from("v_instructores_por_sede")
+        .select("id, nombres, apellidos, sede_id")
+        .order("nombres", { ascending: true });
+
+      const { data: alumnosData } = await supabase
+        .from("alumnos")
+        .select(
+          `
+          id,
+          nombres,
+          apellidos,
+          rut,
+          fecha_nacimiento,
+          edad,
+          telefono,
+          email,
+          direccion,
+          grado,
+          fecha_ultimo_examen,
+          sede_id,
+          instructor_id,
+          activo,
+          sedes ( nombre ),
+          instructores ( nombres, apellidos )
+        `
+        )
+        .order("nombres", { ascending: true });
+
+      setSedes(sedesData || []);
+      setInstructores((instructoresData as any) || []);
+      setAlumnos((alumnosData as any) || []);
+      setLoading(false);
+    };
+
+    loadData();
   }, []);
 
-  // 2) Cargar instructores cuando hay sede
-  useEffect(() => {
-    if (!sedeId) {
-      setInstructores([]);
-      setInstructorId(null);
+  // Filtrar instructores según sede elegida en el formulario
+  const instructoresFiltrados = sedeSeleccionada
+    ? instructores.filter((i: any) => i.sede_id === sedeSeleccionada)
+    : [];
+
+  // Manejar cambio de campos del formulario
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value, type, checked } = e.target as any;
+
+    setNuevoAlumno((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  // Guardar nuevo alumno
+  const handleGuardarAlumno = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoAlumno.nombres || !nuevoAlumno.apellidos || !nuevoAlumno.rut) {
+      alert("Por favor completa al menos nombres, apellidos y RUT.");
       return;
     }
-    (async () => {
-      setLoadingInstructores(true);
-      const { data, error } = await supabase
-        .from("v_instructores_por_sede")
-        .select("sede_id, instructor_id, nombre_completo, grado")
-        .eq("sede_id", sedeId)
-        .order("nombre_completo", { ascending: true });
+    if (!sedeSeleccionada || !instructorSeleccionado) {
+      alert("Debes seleccionar sede e instructor.");
+      return;
+    }
 
-      if (error) {
-        setLastError(error.message);
-        setInstructores([]);
-      } else {
-        setInstructores(data || []);
-      }
-      setLoadingInstructores(false);
-    })();
-  }, [sedeId]);
-
-  // 3) Guardar alumno
-  async function handleGuardar(e: React.FormEvent) {
-    e.preventDefault();
-    setOkMsg(null);
-    setLastError(null);
-
-    if (!sedeId) return setLastError("Selecciona una sede.");
-    if (!instructorId) return setLastError("Selecciona un instructor.");
-    if (!nombres.trim()) return setLastError("Ingresa los nombres.");
-    if (!apellidos.trim()) return setLastError("Ingresa los apellidos.");
-    if (!rut.trim()) return setLastError("Ingresa el RUT.");
-    if (!fechaNacimiento) return setLastError("Ingresa la fecha de nacimiento.");
-
-    const edadCalc = calcEdad(fechaNacimiento);
     setSaving(true);
 
-    const { error } = await supabase.from("alumnos").insert([
-      {
+    const { error, data } = await supabase
+      .from("alumnos")
+      .insert({
+        nombres: nuevoAlumno.nombres,
+        apellidos: nuevoAlumno.apellidos,
+        rut: nuevoAlumno.rut,
+        fecha_nacimiento: nuevoAlumno.fecha_nacimiento || null,
+        telefono: nuevoAlumno.telefono || null,
+        email: nuevoAlumno.email || null,
+        direccion: nuevoAlumno.direccion || null,
+        grado: nuevoAlumno.grado || null,
+        fecha_ultimo_examen:
+          nuevoAlumno.fecha_ultimo_examen || null,
+        sede_id: sedeSeleccionada,
+        instructor_id: instructorSeleccionado,
+        activo: nuevoAlumno.activo ?? true,
+      })
+      .select(
+        `
+        id,
         nombres,
         apellidos,
-        rut, // NOT NULL en tu tabla
-        fecha_nacimiento: fechaNacimiento, // YYYY-MM-DD
-        edad: edadCalc,
-        instructor_id: instructorId,
-        sede_id: sedeId,
-        telefono_apoderado: telefono || null,
-        correo_apoderado: email || null,
-        direccion: direccion || null,
-        grado: grado || null,
-      },
-    ]);
-
-    setSaving(false);
+        rut,
+        fecha_nacimiento,
+        edad,
+        telefono,
+        email,
+        direccion,
+        grado,
+        fecha_ultimo_examen,
+        sede_id,
+        instructor_id,
+        activo,
+        sedes ( nombre ),
+        instructores ( nombres, apellidos )
+      `
+      )
+      .single();
 
     if (error) {
-      setLastError(error.message);
-    } else {
-      setOkMsg("✅ Alumno guardado correctamente.");
+      console.error(error);
+      alert("Error al guardar alumno: " + error.message);
+    } else if (data) {
+      setAlumnos((prev) => [...prev, data as any]);
       // limpiar formulario
-      setNombres("");
-      setApellidos("");
-      setRut("");
-      setFechaNacimiento("");
-      setTelefono("");
-      setEmail("");
-      setDireccion("");
-      setGrado("I Dan");
+      setNuevoAlumno({
+        nombres: "",
+        apellidos: "",
+        rut: "",
+        fecha_nacimiento: "",
+        telefono: "",
+        email: "",
+        direccion: "",
+        grado: "",
+        fecha_ultimo_examen: "",
+        sede_id: "",
+        instructor_id: "",
+        activo: true,
+      });
+      setSedeSeleccionada("");
+      setInstructorSeleccionado("");
     }
+
+    setSaving(false);
+  };
+
+  // Toggle activo/inactivo
+  const handleToggleActivo = async (alumno: Alumno) => {
+    const nuevoEstado = !alumno.activo;
+
+    const { error } = await supabase
+      .from("alumnos")
+      .update({ activo: nuevoEstado })
+      .eq("id", alumno.id);
+
+    if (error) {
+      console.error(error);
+      alert("No se pudo cambiar el estado del alumno.");
+      return;
+    }
+
+    setAlumnos((prev) =>
+      prev.map((a) =>
+        a.id === alumno.id ? { ...a, activo: nuevoEstado } : a
+      )
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-300">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span>Cargando alumnos...</span>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1 className="text-3xl font-semibold text-white mb-8">Registro de Alumnos</h1>
+    <div className="min-h-screen bg-slate-950 text-slate-50 p-6">
+      <h1 className="text-2xl font-bold mb-4">Gestión de Alumnos</h1>
 
-      {/* COMBOS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      {/* Formulario nuevo alumno */}
+      <form
+        onSubmit={handleGuardarAlumno}
+        className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 mb-6 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs"
+      >
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Nombres
+          </label>
+          <input
+            name="nombres"
+            value={nuevoAlumno.nombres}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Apellidos
+          </label>
+          <input
+            name="apellidos"
+            value={nuevoAlumno.apellidos}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">RUT</label>
+          <input
+            name="rut"
+            value={nuevoAlumno.rut}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Fecha nacimiento
+          </label>
+          <input
+            type="date"
+            name="fecha_nacimiento"
+            value={nuevoAlumno.fecha_nacimiento}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Teléfono
+          </label>
+          <input
+            name="telefono"
+            value={nuevoAlumno.telefono}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Email
+          </label>
+          <input
+            type="email"
+            name="email"
+            value={nuevoAlumno.email}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+          />
+        </div>
+
+        <div className="md:col-span-3">
+          <label className="block mb-1 text-slate-400">
+            Dirección
+          </label>
+          <input
+            name="direccion"
+            value={nuevoAlumno.direccion}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">Grado</label>
+          <input
+            name="grado"
+            value={nuevoAlumno.grado}
+            onChange={handleChange}
+            placeholder="Ej: 10º Kup, 1er Dan..."
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Fecha último examen
+          </label>
+          <input
+            type="date"
+            name="fecha_ultimo_examen"
+            value={nuevoAlumno.fecha_ultimo_examen}
+            onChange={handleChange}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+          />
+        </div>
+
         {/* Sede */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <label className="block text-sm text-white/80 mb-2">Sede</label>
+        <div>
+          <label className="block mb-1 text-slate-400">Sede</label>
           <select
-            className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-            value={sedeId ?? ""}
-            onChange={(e) => setSedeId(e.target.value ? Number(e.target.value) : null)}
+            value={sedeSeleccionada}
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : "";
+              setSedeSeleccionada(val);
+              setInstructorSeleccionado("");
+            }}
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+            required
           >
-            <option value="" className="text-black">
-              {loadingSedes ? "Cargando sedes..." : "Seleccione una sede..."}
-            </option>
+            <option value="">Selecciona sede</option>
             {sedes.map((s) => (
-              <option key={s.id} value={s.id} className="text-black">
+              <option key={s.id} value={s.id}>
                 {s.nombre}
               </option>
             ))}
@@ -184,169 +379,138 @@ export default function AlumnosPage() {
         </div>
 
         {/* Instructor */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <label className="block text-sm text-white/80 mb-2">Instructor</label>
+        <div>
+          <label className="block mb-1 text-slate-400">
+            Instructor
+          </label>
           <select
-            className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none disabled:opacity-50"
-            value={instructorId ?? ""}
-            onChange={(e) => setInstructorId(e.target.value ? Number(e.target.value) : null)}
-            disabled={!sedeId || loadingInstructores}
+            value={instructorSeleccionado}
+            onChange={(e) =>
+              setInstructorSeleccionado(
+                e.target.value ? Number(e.target.value) : ""
+              )
+            }
+            className="w-full bg-slate-950/70 border border-slate-700 rounded-lg px-2 py-1 text-xs"
+            required
+            disabled={!sedeSeleccionada}
           >
-            <option value="" className="text-black">
-              {!sedeId
-                ? "Elija una sede primero..."
-                : loadingInstructores
-                ? "Cargando instructores..."
-                : instructores.length
-                ? "Seleccione un instructor..."
-                : "No hay instructores en esta sede"}
+            <option value="">
+              {sedeSeleccionada
+                ? "Selecciona instructor"
+                : "Primero elige la sede"}
             </option>
-            {instructores.map((i) => (
-              <option key={i.instructor_id} value={i.instructor_id} className="text-black">
-                {i.nombre_completo} {i.grado ? `— ${i.grado}` : ""}
+            {instructoresFiltrados.map((i: any) => (
+              <option key={i.id} value={i.id}>
+                {i.nombres} {i.apellidos}
               </option>
             ))}
           </select>
         </div>
-      </div>
 
-      {/* FORMULARIO — solo si ya hay sede e instructor */}
-      {sedeId && instructorId ? (
-        <form
-          onSubmit={handleGuardar}
-          className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-5"
-        >
-          <h2 className="text-xl text-white font-medium">Datos del Alumno</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-white/80 mb-1">Nombres</label>
-              <input
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={nombres}
-                onChange={(e) => setNombres(e.target.value)}
-                placeholder="Ej: Amanda Beatriz"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-white/80 mb-1">Apellidos</label>
-              <input
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={apellidos}
-                onChange={(e) => setApellidos(e.target.value)}
-                placeholder="Ej: Quiñones Delgado"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-white/80 mb-1">RUT</label>
-              <input
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={rut}
-                onChange={(e) => setRut(e.target.value)}
-                placeholder="23838019-7"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-white/80 mb-1">Fecha de nacimiento</label>
-              <input
-                type="date"
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={fechaNacimiento}
-                onChange={(e) => setFechaNacimiento(e.target.value)}
-              />
-              <p className="text-xs text-white/60 mt-1">
-                {edad !== null ? `Edad: ${edad} años` : "—"}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm text-white/80 mb-1">Teléfono apoderado</label>
-              <input
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                placeholder="+569..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-white/80 mb-1">Correo apoderado</label>
-              <input
-                type="email"
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="correo@dominio.cl"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm text-white/80 mb-1">Dirección</label>
-              <input
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={direccion}
-                onChange={(e) => setDireccion(e.target.value)}
-                placeholder="Calle, número, comuna"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-white/80 mb-1">Grado</label>
-              <select
-                className="w-full rounded-md bg-white/10 text-white px-3 py-2 outline-none"
-                value={grado}
-                onChange={(e) => setGrado(e.target.value)}
-              >
-                {GRADOS.map((g) => (
-                  <option key={g} value={g} className="text-black">
-                    {g}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Mensajes */}
-          {lastError && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/10 text-red-100 px-3 py-2">
-              {lastError}
-            </div>
-          )}
-          {okMsg && (
-            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-100 px-3 py-2">
-              {okMsg}
-            </div>
-          )}
-
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-emerald-600 hover:bg-emerald-500 transition px-4 py-2 text-white disabled:opacity-60"
-            >
-              {saving ? "Guardando..." : "Guardar Alumno"}
-            </button>
-          </div>
-        </form>
-      ) : (
-        <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-yellow-100 text-sm">
-          Primero selecciona <b>Sede</b> y <b>Instructor</b> para mostrar el formulario.
+        {/* Activo */}
+        <div className="flex items-center gap-2 mt-4">
+          <input
+            type="checkbox"
+            name="activo"
+            checked={nuevoAlumno.activo}
+            onChange={handleChange}
+          />
+          <span className="text-slate-300 text-xs">
+            Alumno activo
+          </span>
         </div>
-      )}
 
-      {/* Panel de estado */}
-      <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4 text-white/80 text-sm">
-        <div className="font-semibold mb-1">Estado</div>
-        <ul className="list-disc ml-5 space-y-1">
-          <li>Sedes cargadas: {sedes.length}</li>
-          <li>
-            Instructores cargados: {instructores.length}{" "}
-            {sedeId ? `(sede_id = ${sedeId})` : ""}
-          </li>
-        </ul>
+        <div className="md:col-span-3 flex justify-end mt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              <>
+                <PlusCircle className="w-3 h-3" />
+                Guardar alumno
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+
+      {/* Tabla de alumnos */}
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
+        <h2 className="text-sm font-semibold mb-3">
+          Lista de alumnos (activos e inactivos)
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left text-slate-300">
+            <thead className="text-slate-400 border-b border-slate-800">
+              <tr>
+                <th className="py-2">Nombre</th>
+                <th className="py-2">RUT</th>
+                <th className="py-2">Sede</th>
+                <th className="py-2">Instructor</th>
+                <th className="py-2">Grado</th>
+                <th className="py-2">Últ. examen</th>
+                <th className="py-2">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alumnos.map((a) => (
+                <tr key={a.id} className="border-b border-slate-900">
+                  <td className="py-2">
+                    {a.nombres} {a.apellidos}
+                  </td>
+                  <td className="py-2">{a.rut}</td>
+                  <td className="py-2">
+                    {a.sedes?.nombre || "-"}
+                  </td>
+                  <td className="py-2">
+                    {a.instructores
+                      ? `${a.instructores.nombres} ${a.instructores.apellidos}`
+                      : "-"}
+                  </td>
+                  <td className="py-2">{a.grado || "-"}</td>
+                  <td className="py-2">
+                    {a.fecha_ultimo_examen || "-"}
+                  </td>
+                  <td className="py-2">
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={a.activo}
+                        onChange={() => handleToggleActivo(a)}
+                      />
+                      <span
+                        className={
+                          a.activo
+                            ? "text-emerald-400"
+                            : "text-slate-500"
+                        }
+                      >
+                        {a.activo ? "Activo" : "Inactivo"}
+                      </span>
+                    </label>
+                  </td>
+                </tr>
+              ))}
+              {alumnos.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="py-4 text-center text-slate-500"
+                  >
+                    No hay alumnos registrados aún.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
