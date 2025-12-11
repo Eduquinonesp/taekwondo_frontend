@@ -1,173 +1,154 @@
-// app/page.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/app/lib/supabaseClient";
+
+type Stats = {
+  sedes: number;
+  instructores: number;
+};
 
 export default function HomePage() {
+  const [stats, setStats] = useState<Stats>({ sedes: 0, instructores: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const cargarStats = async () => {
+      try {
+        setLoading(true);
+
+        // 👇 Contar sedes
+        const { count: sedesCount, error: sedesError } = await supabase
+          .from("sedes")
+          .select("*", { count: "exact", head: true });
+
+        if (sedesError) {
+          console.error("Error al contar sedes:", sedesError);
+        }
+
+        // 👇 Contar instructores
+        const { count: instructoresCount, error: instructoresError } =
+          await supabase
+            .from("instructores")
+            .select("*", { count: "exact", head: true });
+
+        if (instructoresError) {
+          console.error("Error al contar instructores:", instructoresError);
+        }
+
+        setStats({
+          sedes: sedesCount ?? 0,
+          instructores: instructoresCount ?? 0,
+        });
+      } catch (err) {
+        console.error("Error al cargar estadísticas públicas:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarStats();
+  }, []);
+
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col">
-      {/* Barra superior */}
-      <header className="border-b border-neutral-800">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Logo redondo (puedes cambiar el src cuando tengas tu logo en /public) */}
-            <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold">
+    <main className="min-h-screen bg-slate-950 text-slate-50">
+      {/* Sección Hero */}
+      <section className="px-4 md:px-10 lg:px-16 py-10 lg:py-16 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        <div className="max-w-6xl mx-auto grid gap-10 md:grid-cols-2 items-center">
+          <div className="space-y-5">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold leading-tight">
               ATUCH
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold tracking-wide">
-                ATUCH · Universal Taekwon-Do Chile
-              </span>
-              <span className="text-xs text-neutral-400">
-                Asociación de Taekwon-Do Unión Chile
-              </span>
-            </div>
-          </div>
-
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="#escuelas" className="hover:text-emerald-400 transition">
-              Escuelas
-            </Link>
-            <Link href="#eventos" className="hover:text-emerald-400 transition">
-              Eventos
-            </Link>
-            <Link href="#contacto" className="hover:text-emerald-400 transition">
-              Contacto
-            </Link>
-
-            <Link
-              href="/login"
-              className="ml-4 rounded-full border border-emerald-500 px-4 py-1.5 text-sm font-medium hover:bg-emerald-500 hover:text-black transition"
-            >
-              Acceso instructores
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      {/* Contenido principal */}
-      <section className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 py-16 grid md:grid-cols-2 gap-12 items-center">
-          {/* Lado izquierdo: texto principal */}
-          <div className="space-y-6">
-            <p className="text-sm uppercase tracking-[0.2em] text-emerald-400">
-              Universal Taekwon-Do Chile
-            </p>
-            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-              Una sola familia de Taekwon-Do
-              <span className="block text-emerald-400">
-                unida desde Chile para el mundo.
-              </span>
+              <span className="text-sky-400"> · Sistema de gestión</span>
             </h1>
-            <p className="text-neutral-300 text-sm md:text-base max-w-xl">
-              ATUCH reúne a las escuelas de Universal Taekwon-Do en Chile:
-              instructores, sedes y alumnos que comparten el legado del Taekwon-Do
-              ITF, el trabajo en equipo y la formación de mejores personas a través
-              del arte marcial.
+            <p className="text-sm md:text-base text-slate-300 leading-relaxed">
+              ATUCH es una plataforma creada para organizar y profesionalizar
+              la gestión de nuestras escuelas de Taekwon-Do. Un solo sistema
+              para administrar sedes, instructores, alumnos y pagos, manteniendo
+              siempre el foco en lo importante: las personas y la comunidad.
+            </p>
+            <p className="text-xs md:text-sm text-slate-400">
+              Este sitio muestra información general de la organización. El
+              acceso a datos detallados de alumnos y pagos está reservado
+              únicamente a instructores autorizados.
             </p>
 
-            <div className="flex flex-wrap gap-4 pt-2">
-              <Link
-                href="#escuelas"
-                className="rounded-full bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-black hover:bg-emerald-400 transition"
-              >
-                Ver escuelas y sedes
-              </Link>
+            <div className="flex flex-wrap gap-3 pt-2">
               <Link
                 href="/login"
-                className="rounded-full border border-neutral-600 px-6 py-2.5 text-sm font-semibold hover:border-emerald-400 hover:text-emerald-400 transition"
+                className="inline-flex items-center rounded-xl bg-sky-500 hover:bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition"
               >
                 Acceso instructores
               </Link>
+              <a
+                href="#estadisticas"
+                className="inline-flex items-center rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-slate-900/60 transition"
+              >
+                Ver estadísticas públicas
+              </a>
             </div>
-
-            <p className="text-xs text-neutral-500 pt-2">
-              Plataforma interna de gestión de alumnos, sedes y exámenes integrada
-              con nuestro sistema ATUCH.
-            </p>
           </div>
 
-          {/* Lado derecho: mini “tarjeta” estilo dashboard */}
-          <div className="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 to-neutral-950 p-6 shadow-xl">
-            <p className="text-xs font-semibold text-neutral-400 uppercase tracking-[0.2em] mb-4">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 md:p-6 shadow-2xl shadow-black/60">
+            <h2 className="text-sm font-semibold text-sky-300 uppercase tracking-wide mb-2">
               Vista rápida del sistema
+            </h2>
+            <p className="text-xs text-slate-400 mb-4">
+              Datos generales en tiempo real. La información detallada de cada
+              sede, instructor y alumno está protegida dentro del sistema.
             </p>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4">
-                <p className="text-xs text-neutral-400">Escuelas</p>
-                <p className="text-2xl font-bold mt-1">4</p>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  La Reina · Ñuñoa · Vitacura · +
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-2xl bg-slate-950/60 border border-slate-800 p-3">
+                <p className="text-xs text-slate-400">Sedes registradas</p>
+                <p className="mt-1 text-2xl font-bold text-sky-400">
+                  {loading ? "…" : stats.sedes}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Escuelas oficialmente integradas a ATUCH.
                 </p>
               </div>
-              <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4">
-                <p className="text-xs text-neutral-400">Instructores</p>
-                <p className="text-2xl font-bold mt-1">2</p>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Datos sincronizados desde ATUCH.
+              <div className="rounded-2xl bg-slate-950/60 border border-slate-800 p-3">
+                <p className="text-xs text-slate-400">Instructores activos</p>
+                <p className="mt-1 text-2xl font-bold text-emerald-400">
+                  {loading ? "…" : stats.instructores}
                 </p>
-              </div>
-              <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4">
-                <p className="text-xs text-neutral-400">Alumnos activos</p>
-                <p className="text-2xl font-bold mt-1">31</p>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Seguimiento de exámenes y pagos.
-                </p>
-              </div>
-              <div className="rounded-xl bg-neutral-900 border border-neutral-800 p-4">
-                <p className="text-xs text-neutral-400">Próximos eventos</p>
-                <p className="text-2xl font-bold mt-1">3</p>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Torneos y exámenes nacionales.
+                <p className="text-[11px] text-slate-500">
+                  Profesores autorizados dentro del sistema.
                 </p>
               </div>
             </div>
-
-            <p className="text-xs text-neutral-400 mb-2">
-              Si eres instructor o encargado de sede, puedes ingresar con tu cuenta
-              para gestionar alumnos y actualizar información.
+            <p className="mt-4 text-[11px] text-slate-500">
+              Esta información es pública y solo muestra cantidades, sin
+              nombres ni datos personales.
             </p>
-            <Link
-              href="/login"
-              className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-2 text-xs font-semibold text-black hover:bg-emerald-400 transition"
-            >
-              Ir al sistema ATUCH
-            </Link>
           </div>
         </div>
       </section>
 
-      {/* Sección Escuelas (ancla simple por ahora) */}
+      {/* Sección institucional simple */}
       <section
-        id="escuelas"
-        className="border-t border-neutral-900 bg-neutral-950"
+        id="estadisticas"
+        className="px-4 md:px-10 lg:px-16 py-10 bg-slate-950"
       >
-        <div className="max-w-6xl mx-auto px-4 py-10">
-          <h2 className="text-lg font-semibold mb-3">Escuelas y sedes</h2>
-          <p className="text-sm text-neutral-400 mb-4">
-            Aquí podrás listar todas las sedes de Universal Taekwon-Do Chile,
-            con dirección, horarios y nombre del instructor responsable.
-            Más adelante conectamos esto directamente a la base de datos.
+        <div className="max-w-5xl mx-auto space-y-6">
+          <h2 className="text-xl md:text-2xl font-bold tracking-tight">
+            Una sola familia de Taekwon-Do
+          </h2>
+          <p className="text-sm md:text-base text-slate-300 leading-relaxed">
+            ATUCH busca potenciar el trabajo en equipo entre sedes e
+            instructores, entregando herramientas modernas para la gestión
+            diaria: control de alumnos, seguimiento de pagos, reportes y más.
           </p>
-          <ul className="text-sm text-neutral-300 space-y-1">
-            <li>• Dojang La Reina – Sabumnim Eduardo Quiñones</li>
-            <li>• Dojang Vitacura – Instructor asignado</li>
-            <li>• Dojang Ñuñoa – Instructor asignado</li>
-            <li>• Otras sedes en expansión…</li>
-          </ul>
+          <p className="text-sm text-slate-400">
+            El detalle de la información (datos de contacto, historial de
+            exámenes, pagos individuales, etc.) es visible únicamente para
+            usuarios con acceso al sistema interno.
+          </p>
         </div>
       </section>
 
-      {/* Footer simple */}
-      <footer className="border-t border-neutral-900 bg-neutral-950">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500">
-          <span>© {new Date().getFullYear()} ATUCH · Universal Taekwon-Do Chile</span>
-          <span>
-            Inspirado en el legado del Taekwon-Do ITF y en el trabajo en equipo
-            de instructores y alumnos.
-          </span>
-        </div>
+      <footer className="border-t border-slate-800 py-4 text-center text-[11px] text-slate-500">
+        ATUCH · Sistema de gestión de Taekwon-Do · {new Date().getFullYear()}
       </footer>
     </main>
   );
