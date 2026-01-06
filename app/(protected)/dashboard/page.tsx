@@ -12,12 +12,7 @@ import {
   PieLabelRenderProps,
 } from "recharts";
 
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/app/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/app/components/ui/card";
 
 // Colores del gráfico
 const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
@@ -59,16 +54,27 @@ type AlumnoConSede = {
   diasDesdeExamen: number | null;
 };
 
+// Helper: type guard para payload del label del pie
+type PiePayload = {
+  sede?: string;
+  name?: string;
+};
+
+const isPiePayload = (val: unknown): val is PiePayload => {
+  return typeof val === "object" && val !== null;
+};
+
 // Label del gráfico (porcentaje por sede)
 const renderPieLabel = (props: PieLabelRenderProps) => {
   const { payload, percent } = props;
-  if (typeof percent !== "number" || !payload) return "";
 
-  // @ts-expect-error: payload.sede viene desde los datos del gráfico
-  const sede = payload.sede || payload.name || "";
+  if (typeof percent !== "number") return "";
+
+  const safePayload: PiePayload = isPiePayload(payload) ? (payload as PiePayload) : {};
+  const sede = safePayload.sede ?? safePayload.name ?? "";
   const value = (percent * 100).toFixed(0);
 
-  return `${sede} ${value}%`;
+  return sede ? `${sede} ${value}%` : `${value}%`;
 };
 
 // Calcula edad en años desde fecha_nacimiento
@@ -150,9 +156,7 @@ export default function DashboardPage() {
         // 1) Traer datos
         const { data: alumnosData, error: alumnosError } = await supabase
           .from("alumnos")
-          .select(
-            "id, nombres, apellidos, sede_id, grado, fecha_nacimiento, fecha_ultimo_examen"
-          );
+          .select("id, nombres, apellidos, sede_id, grado, fecha_nacimiento, fecha_ultimo_examen");
 
         if (alumnosError) throw alumnosError;
 
@@ -162,10 +166,9 @@ export default function DashboardPage() {
 
         if (sedesError) throw sedesError;
 
-        const {
-          data: instructoresData,
-          error: instructoresError,
-        } = await supabase.from("instructores").select("id");
+        const { data: instructoresData, error: instructoresError } = await supabase
+          .from("instructores")
+          .select("id");
 
         if (instructoresError) throw instructoresError;
 
@@ -182,11 +185,7 @@ export default function DashboardPage() {
           .filter((e): e is number => e !== null);
 
         const promedioEdad =
-          edades.length > 0
-            ? Math.round(
-                edades.reduce((sum, e) => sum + e, 0) / edades.length
-              )
-            : null;
+          edades.length > 0 ? Math.round(edades.reduce((sum, e) => sum + e, 0) / edades.length) : null;
 
         // 4) Exámenes pendientes:
         //    - Sin fecha_ultimo_examen
@@ -202,22 +201,17 @@ export default function DashboardPage() {
 
         const conteoPorSede = new Map<string, number>();
         alumnos.forEach((a) => {
-          const nombreSede =
-            (a.sede_id && mapaSedeNombre.get(a.sede_id)) || "Sin sede";
-          conteoPorSede.set(
-            nombreSede,
-            (conteoPorSede.get(nombreSede) || 0) + 1
-          );
+          const nombreSede = (a.sede_id && mapaSedeNombre.get(a.sede_id)) || "Sin sede";
+          conteoPorSede.set(nombreSede, (conteoPorSede.get(nombreSede) || 0) + 1);
         });
 
-        const distribucionArray: DistribucionItem[] = Array.from(
-          conteoPorSede.entries()
-        ).map(([sede, cantidad]) => ({ sede, cantidad }));
+        const distribucionArray: DistribucionItem[] = Array.from(conteoPorSede.entries()).map(
+          ([sede, cantidad]) => ({ sede, cantidad })
+        );
 
         // 6) Tabla detalle alumnos
         const alumnosTablaData: AlumnoConSede[] = alumnos.map((a) => {
-          const sedeNombre =
-            (a.sede_id && mapaSedeNombre.get(a.sede_id)) || "Sin sede";
+          const sedeNombre = (a.sede_id && mapaSedeNombre.get(a.sede_id)) || "Sin sede";
           const dias = diasDesde(a.fecha_ultimo_examen);
 
           return {
@@ -231,19 +225,12 @@ export default function DashboardPage() {
         });
 
         // 7) Actualizar estado
-        setStats({
-          totalAlumnos,
-          totalInstructores,
-          promedioEdad,
-          examenesPendientes,
-        });
+        setStats({ totalAlumnos, totalInstructores, promedioEdad, examenesPendientes });
         setDistribucion(distribucionArray);
         setAlumnosTabla(alumnosTablaData);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err);
-        setError(
-          "No se pudieron cargar los datos del dashboard. Revisa Supabase o la conexión."
-        );
+        setError("No se pudieron cargar los datos del dashboard. Revisa Supabase o la conexión.");
       } finally {
         setLoading(false);
       }
@@ -255,9 +242,7 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-6 flex flex-col gap-8 items-center">
       <section className="w-full max-w-6xl space-y-2">
-        <h1 className="text-4xl font-bold mb-2 text-center">
-          Dashboard Taekwon-Do Chile 🇨🇱
-        </h1>
+        <h1 className="text-4xl font-bold mb-2 text-center">Dashboard Taekwon-Do Chile 🇨🇱</h1>
         <p className="text-neutral-400 text-center">
           Visualiza el rendimiento y distribución de alumnos por sede.
         </p>
@@ -270,9 +255,7 @@ export default function DashboardPage() {
             <CardTitle>Total Alumnos</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold">
-              {stats.totalAlumnos ?? 0}
-            </p>
+            <p className="text-3xl font-semibold">{stats.totalAlumnos ?? 0}</p>
           </CardContent>
         </Card>
 
@@ -281,9 +264,7 @@ export default function DashboardPage() {
             <CardTitle>Instructores</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold">
-              {stats.totalInstructores ?? 0}
-            </p>
+            <p className="text-3xl font-semibold">{stats.totalInstructores ?? 0}</p>
           </CardContent>
         </Card>
 
@@ -293,9 +274,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">
-              {stats.promedioEdad !== null
-                ? `${stats.promedioEdad} años`
-                : "—"}
+              {stats.promedioEdad !== null ? `${stats.promedioEdad} años` : "—"}
             </p>
           </CardContent>
         </Card>
@@ -305,29 +284,21 @@ export default function DashboardPage() {
             <CardTitle>Exámenes Pendientes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold">
-              {stats.examenesPendientes ?? 0}
-            </p>
+            <p className="text-3xl font-semibold">{stats.examenesPendientes ?? 0}</p>
           </CardContent>
         </Card>
       </section>
 
       {/* Gráfico de distribución */}
       <section className="w-full max-w-6xl bg-neutral-900 rounded-2xl p-6 flex flex-col gap-4">
-        <h2 className="text-xl font-semibold text-center">
-          Distribución de alumnos por sede
-        </h2>
+        <h2 className="text-xl font-semibold text-center">Distribución de alumnos por sede</h2>
 
         {loading ? (
-          <p className="text-neutral-400 text-center">
-            Cargando datos reales...
-          </p>
+          <p className="text-neutral-400 text-center">Cargando datos reales...</p>
         ) : error ? (
           <p className="text-red-400 text-center">{error}</p>
         ) : distribucion.length === 0 ? (
-          <p className="text-neutral-400 text-center">
-            Aún no hay alumnos registrados.
-          </p>
+          <p className="text-neutral-400 text-center">Aún no hay alumnos registrados.</p>
         ) : (
           <div className="w-full h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -343,19 +314,17 @@ export default function DashboardPage() {
                   label={renderPieLabel}
                 >
                   {distribucion.map((entry, index) => (
-                    <Cell
-                      key={entry.sede}
-                      fill={COLORS[index % COLORS.length]}
-                    />
+                    <Cell key={entry.sede} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
+
                 <Tooltip
-                  formatter={(value: any) =>
-                    `${value as number} alumno${
-                      (value as number) === 1 ? "" : "s"
-                    }`
-                  }
-                  labelFormatter={(label: any) => `Sede: ${label}`}
+                  formatter={(value: unknown) => {
+                    const n = typeof value === "number" ? value : Number(value);
+                    const safe = Number.isFinite(n) ? n : 0;
+                    return `${safe} alumno${safe === 1 ? "" : "s"}`;
+                  }}
+                  labelFormatter={(label: unknown) => `Sede: ${String(label)}`}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -365,16 +334,12 @@ export default function DashboardPage() {
 
       {/* Tabla detalle de alumnos */}
       <section className="w-full max-w-6xl bg-neutral-900 rounded-2xl p-6 mt-2">
-        <h2 className="text-lg font-semibold mb-4">
-          Detalle de alumnos (seguimiento de exámenes)
-        </h2>
+        <h2 className="text-lg font-semibold mb-4">Detalle de alumnos (seguimiento de exámenes)</h2>
 
         {loading ? (
           <p className="text-neutral-400">Cargando alumnos...</p>
         ) : alumnosTabla.length === 0 ? (
-          <p className="text-neutral-400">
-            No hay alumnos registrados aún.
-          </p>
+          <p className="text-neutral-400">No hay alumnos registrados aún.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -388,30 +353,26 @@ export default function DashboardPage() {
                   <th className="py-2 text-left">Estado</th>
                 </tr>
               </thead>
+
               <tbody>
                 {alumnosTabla.map((a) => {
                   const estado = getEstadoExamen(a.diasDesdeExamen);
+
                   return (
                     <tr
                       key={a.id}
                       className="border-b border-neutral-900/60 hover:bg-neutral-800/40 transition-colors"
                     >
-                      <td className="py-2 pr-2">
-                        {a.nombreCompleto}
-                      </td>
+                      <td className="py-2 pr-2">{a.nombreCompleto}</td>
                       <td className="py-2 pr-2">{a.sede}</td>
                       <td className="py-2 pr-2">{a.grado}</td>
                       <td className="py-2 pr-2">
                         {a.fechaUltimoExamen
-                          ? new Date(
-                              a.fechaUltimoExamen
-                            ).toLocaleDateString("es-CL")
+                          ? new Date(a.fechaUltimoExamen).toLocaleDateString("es-CL")
                           : "—"}
                       </td>
                       <td className="py-2 pr-2">
-                        {a.diasDesdeExamen !== null
-                          ? a.diasDesdeExamen
-                          : "—"}
+                        {a.diasDesdeExamen !== null ? a.diasDesdeExamen : "—"}
                       </td>
                       <td className="py-2">
                         <span
